@@ -5,41 +5,46 @@ export async function GET() {
   try {
     const supabase = await createClient()
     const { data: users, error } = await supabase
-      .from("users")
-      .select("id, name, username, email, role, is_admin")
+      .from("team_members")
+      .select("id, email, username, name, role, role_id, created_at")
       .order("created_at", { ascending: true })
 
     if (error) throw error
 
     return NextResponse.json({
-      users: users.map((u) => ({
+      users: (users || []).map((u) => ({
         id: u.id,
         name: u.name,
         username: u.username,
         email: u.email,
         role: u.role,
-        isAdmin: u.is_admin,
+        role_id: u.role_id,
+        isAdmin: u.role === "ADMIN_TOTAL" || u.role === "ADMIN",
       })),
     })
   } catch {
-    return NextResponse.json({ error: "ERRO: FALHA_AO_BUSCAR_USUÁRIOS" }, { status: 500 })
+    return NextResponse.json(
+      { error: "ERRO: FALHA_AO_BUSCAR_USUÁRIOS" },
+      { status: 500 },
+    )
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { name, username, email, password, role, isAdmin } = await request.json()
+    const { name, username, email, password, role } = await request.json()
     const supabase = await createClient()
 
+    const finalUsername = username.startsWith("@") ? username : `@${username}`
+
     const { data: user, error } = await supabase
-      .from("users")
+      .from("team_members")
       .insert({
         name: name.toUpperCase().replace(/\s+/g, "_"),
-        username: username.toLowerCase().replace(/\s+/g, "."),
+        username: finalUsername.toLowerCase(),
         email: email.toLowerCase(),
-        password_hash: password,
+        password,
         role: role?.toUpperCase().replace(/\s+/g, "_") || "COLLABORATOR",
-        is_admin: isAdmin || false,
       })
       .select()
       .single()
@@ -53,11 +58,15 @@ export async function POST(request: NextRequest) {
         username: user.username,
         email: user.email,
         role: user.role,
-        isAdmin: user.is_admin,
+        role_id: user.role_id,
+        isAdmin: user.role === "ADMIN_TOTAL" || user.role === "ADMIN",
       },
     })
   } catch {
-    return NextResponse.json({ error: "ERRO: FALHA_AO_CRIAR_USUÁRIO" }, { status: 500 })
+    return NextResponse.json(
+      { error: "ERRO: FALHA_AO_CRIAR_USUÁRIO" },
+      { status: 500 },
+    )
   }
 }
 
@@ -65,19 +74,22 @@ export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const id = searchParams.get("id")
-    
+
     if (!id) {
       return NextResponse.json({ error: "ID obrigatório" }, { status: 400 })
     }
 
     const supabase = await createClient()
-    const { error } = await supabase.from("users").delete().eq("id", id)
+    const { error } = await supabase.from("team_members").delete().eq("id", id)
 
     if (error) throw error
 
     return NextResponse.json({ success: true })
   } catch {
-    return NextResponse.json({ error: "ERRO: FALHA_AO_DELETAR_USUÁRIO" }, { status: 500 })
+    return NextResponse.json(
+      { error: "ERRO: FALHA_AO_DELETAR_USUÁRIO" },
+      { status: 500 },
+    )
   }
 }
 
@@ -89,11 +101,11 @@ export async function PATCH(request: NextRequest) {
     const updates: Record<string, string> = {}
     if (name) updates.name = name.toUpperCase().replace(/\s+/g, "_")
     if (email) updates.email = email.toLowerCase()
-    if (password) updates.password_hash = password
+    if (password) updates.password = password
     if (role) updates.role = role.toUpperCase().replace(/\s+/g, "_")
 
     const { data: user, error } = await supabase
-      .from("users")
+      .from("team_members")
       .update(updates)
       .eq("id", id)
       .select()
@@ -108,10 +120,14 @@ export async function PATCH(request: NextRequest) {
         username: user.username,
         email: user.email,
         role: user.role,
-        isAdmin: user.is_admin,
+        role_id: user.role_id,
+        isAdmin: user.role === "ADMIN_TOTAL" || user.role === "ADMIN",
       },
     })
   } catch {
-    return NextResponse.json({ error: "ERRO: FALHA_AO_ATUALIZAR_USUÁRIO" }, { status: 500 })
+    return NextResponse.json(
+      { error: "ERRO: FALHA_AO_ATUALIZAR_USUÁRIO" },
+      { status: 500 },
+    )
   }
 }

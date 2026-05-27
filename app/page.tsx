@@ -881,13 +881,13 @@ function TaskEditModal({
                       className="border border-[#262626] bg-[#1A1A1A] p-3"
                     >
                       <div className="flex items-center gap-2 mb-2">
-                        <span className="text-[#00FF66] text-xs font-bold">
-                          @{team.find((t) => t.id === comment.authorId)?.username || "unknown"}
-                        </span>
-                        <span className="text-[#00FF66]/50 text-xs">
-                          {new Date(comment.createdAt).toLocaleString("pt-BR")}
-                        </span>
-                      </div>
+                          <span className="text-[#00FF66] text-xs font-bold">
+                            {comment.authorName}
+                          </span>
+                          <span className="text-[#00FF66]/50 text-xs">
+                            {new Date(comment.createdAt).toLocaleString("pt-BR")}
+                          </span>
+                        </div>
                       <div className="text-white text-sm break-words">
                         {comment.content}
                       </div>
@@ -960,10 +960,11 @@ function TaskCard({
         </div>
       )}
 
-      <div className="text-[#00FF66] text-xs mb-3 flex flex-wrap gap-1">
-        {task.assignees.map((assignee, i) => (
-          <span key={i}>@{assignee.toLowerCase().replace(/\s+/g, "_")}{i < task.assignees.length - 1 ? "," : ""}</span>
-        ))}
+                      <div className="text-[#00FF66] text-xs mb-3 flex flex-wrap gap-1">
+        {task.assignees.map((assignee, i) => {
+          const display = assignee.startsWith("@") ? assignee : `@${assignee.toLowerCase().replace(/\s+/g, "_")}`
+          return <span key={i}>{display}{i < task.assignees.length - 1 ? "," : ""}</span>
+        })}
       </div>
 
       {task.comments.length > 0 && (
@@ -1618,7 +1619,13 @@ export default function BroLabTask() {
       await fetch("/api/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(member),
+        body: JSON.stringify({
+          name: member.name,
+          username: member.username,
+          email: member.email,
+          password: member.password,
+          role: member.isAdmin ? "ADMIN" : (member.role || "COLLABORATOR"),
+        }),
       })
       await fetchData()
     } catch (error) {
@@ -1671,7 +1678,6 @@ export default function BroLabTask() {
           ...task,
           columnId,
           position: column?.tasks.length || 0,
-          createdBy: currentUser?.id,
         }),
       })
       await fetchData()
@@ -1732,9 +1738,8 @@ export default function BroLabTask() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           taskId,
-          userId: currentUser.id,
+          authorUsername: currentUser.username,
           content,
-          mentions,
         }),
       })
       await fetchData()

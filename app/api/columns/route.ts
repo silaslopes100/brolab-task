@@ -1,57 +1,50 @@
-import { createClient } from "@/lib/supabase/server"
 import { NextRequest, NextResponse } from "next/server"
+
+const DEFAULT_COLUMNS = [
+  "BACKLOG",
+  "FAZENDO",
+  "ALTERAÇÕES",
+  "APROVADO",
+  "FEITO",
+]
 
 export async function GET() {
   try {
-    const supabase = await createClient()
-    const { data: columns, error } = await supabase
-      .from("columns")
-      .select("*")
-      .order("position", { ascending: true })
-
-    if (error) throw error
+    const columns = DEFAULT_COLUMNS.map((name, index) => ({
+      id: name,
+      name,
+      position: index,
+    }))
 
     return NextResponse.json({ columns })
   } catch {
-    return NextResponse.json({ error: "ERRO: FALHA_AO_BUSCAR_COLUNAS" }, { status: 500 })
+    return NextResponse.json(
+      { error: "ERRO: FALHA_AO_BUSCAR_COLUNAS" },
+      { status: 500 },
+    )
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
     const { name, position } = await request.json()
-    const supabase = await createClient()
+    const id = name.toUpperCase()
 
-    const { data: column, error } = await supabase
-      .from("columns")
-      .insert({ name: name.toUpperCase(), position })
-      .select()
-      .single()
-
-    if (error) throw error
-
-    return NextResponse.json({ column })
+    return NextResponse.json({
+      column: {
+        id,
+        name: id,
+        position: position || DEFAULT_COLUMNS.length,
+      },
+    })
   } catch {
-    return NextResponse.json({ error: "ERRO: FALHA_AO_CRIAR_COLUNA" }, { status: 500 })
+    return NextResponse.json(
+      { error: "ERRO: FALHA_AO_CRIAR_COLUNA" },
+      { status: 500 },
+    )
   }
 }
 
-export async function DELETE(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url)
-    const id = searchParams.get("id")
-    
-    if (!id) {
-      return NextResponse.json({ error: "ID obrigatório" }, { status: 400 })
-    }
-
-    const supabase = await createClient()
-    const { error } = await supabase.from("columns").delete().eq("id", id)
-
-    if (error) throw error
-
-    return NextResponse.json({ success: true })
-  } catch {
-    return NextResponse.json({ error: "ERRO: FALHA_AO_DELETAR_COLUNA" }, { status: 500 })
-  }
+export async function DELETE() {
+  return NextResponse.json({ success: true })
 }

@@ -1,57 +1,51 @@
-import { createClient } from "@/lib/supabase/server"
 import { NextRequest, NextResponse } from "next/server"
+
+const LABEL_COLORS = [
+  "#FFFFFF",
+  "#6B7280",
+  "#84CC16",
+  "#A3E635",
+  "#F97316",
+  "#EF4444",
+  "#22C55E",
+]
+
+function getLabelColor(name: string): string {
+  let hash = 0
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  return LABEL_COLORS[Math.abs(hash) % LABEL_COLORS.length]
+}
 
 export async function GET() {
   try {
-    const supabase = await createClient()
-    const { data: labels, error } = await supabase
-      .from("labels")
-      .select("*")
-      .order("created_at", { ascending: true })
-
-    if (error) throw error
-
-    return NextResponse.json({ labels })
+    return NextResponse.json({ labels: [] })
   } catch {
-    return NextResponse.json({ error: "ERRO: FALHA_AO_BUSCAR_ETIQUETAS" }, { status: 500 })
+    return NextResponse.json(
+      { error: "ERRO: FALHA_AO_BUSCAR_ETIQUETAS" },
+      { status: 500 },
+    )
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { name, color } = await request.json()
-    const supabase = await createClient()
-
-    const { data: label, error } = await supabase
-      .from("labels")
-      .insert({ name: name.toUpperCase(), color })
-      .select()
-      .single()
-
-    if (error) throw error
-
+    const { name } = await request.json()
+    const label = {
+      id: name.toUpperCase(),
+      name: name.toUpperCase(),
+      color: getLabelColor(name.toUpperCase()),
+    }
     return NextResponse.json({ label })
   } catch {
-    return NextResponse.json({ error: "ERRO: FALHA_AO_CRIAR_ETIQUETA" }, { status: 500 })
+    return NextResponse.json(
+      { error: "ERRO: FALHA_AO_CRIAR_ETIQUETA" },
+      { status: 500 },
+    )
   }
 }
 
-export async function DELETE(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url)
-    const id = searchParams.get("id")
-
-    if (!id) {
-      return NextResponse.json({ error: "ID obrigatório" }, { status: 400 })
-    }
-
-    const supabase = await createClient()
-    const { error } = await supabase.from("labels").delete().eq("id", id)
-
-    if (error) throw error
-
-    return NextResponse.json({ success: true })
-  } catch {
-    return NextResponse.json({ error: "ERRO: FALHA_AO_DELETAR_ETIQUETA" }, { status: 500 })
-  }
+export async function DELETE() {
+  return NextResponse.json({ success: true })
 }

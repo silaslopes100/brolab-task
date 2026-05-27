@@ -6,25 +6,28 @@ export async function POST(request: NextRequest) {
     const { email, password } = await request.json()
     const supabase = await createClient()
 
-    // Buscar usuário por email ou username
+    const loginIdentifier = email.toLowerCase().trim()
+    const usernameWithAt = loginIdentifier.startsWith("@")
+      ? loginIdentifier
+      : `@${loginIdentifier.replace(/^@/, "")}`
+
     const { data: user, error } = await supabase
-      .from("users")
+      .from("team_members")
       .select("*")
-      .or(`email.eq.${email.toLowerCase()},username.eq.${email.toLowerCase().replace("@", "")}`)
+      .or(`email.eq.${loginIdentifier},username.eq.${usernameWithAt}`)
       .single()
 
     if (error || !user) {
       return NextResponse.json(
         { error: "ERRO: CREDENCIAIS_INVÁLIDAS" },
-        { status: 401 }
+        { status: 401 },
       )
     }
 
-    // Verificar senha (em produção usar bcrypt)
-    if (user.password_hash !== password) {
+    if (user.password !== password) {
       return NextResponse.json(
         { error: "ERRO: CREDENCIAIS_INVÁLIDAS" },
-        { status: 401 }
+        { status: 401 },
       )
     }
 
@@ -35,13 +38,14 @@ export async function POST(request: NextRequest) {
         username: user.username,
         email: user.email,
         role: user.role,
-        isAdmin: user.is_admin,
+        role_id: user.role_id,
+        isAdmin: user.role === "ADMIN_TOTAL" || user.role === "ADMIN",
       },
     })
   } catch {
     return NextResponse.json(
       { error: "ERRO: FALHA_NO_SERVIDOR" },
-      { status: 500 }
+      { status: 500 },
     )
   }
 }
