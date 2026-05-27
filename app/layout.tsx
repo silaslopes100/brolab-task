@@ -51,5 +51,3 @@ export default function RootLayout({
     </html>
   )
 }
-</content>
-<parameter name="taskNameActive">Updating layout with JetBrains Mono
