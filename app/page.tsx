@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 
 // ==================== TYPES ====================
 interface Label {
@@ -22,6 +22,8 @@ interface Task {
   id: string
   title: string
   description: string
+  columnId: string
+  position: number
   assignees: string[]
   labels: Label[]
   comments: Comment[]
@@ -30,7 +32,8 @@ interface Task {
 
 interface Column {
   id: string
-  title: string
+  name: string
+  position: number
   tasks: Task[]
 }
 
@@ -40,7 +43,6 @@ interface TeamMember {
   username: string
   role: string
   email: string
-  password: string
   isAdmin: boolean
 }
 
@@ -66,77 +68,32 @@ const LABEL_COLORS = [
   { name: "Verde Folha", value: "#22C55E" },
 ]
 
-// ==================== INITIAL DATA ====================
-const initialAdminUsers: TeamMember[] = [
-  {
-    id: "admin-1",
-    name: "ADMIN_GERAL",
-    username: "admin",
-    role: "SYSTEM_ADMIN",
-    email: "admin@admin.com",
-    password: "39754321",
-    isAdmin: true,
-  },
-  {
-    id: "admin-2",
-    name: "SILAS_LOPES",
-    username: "silas",
-    role: "ADMIN",
-    email: "silaslopesdesouza@gmail.com",
-    password: "1234567",
-    isAdmin: true,
-  },
-  {
-    id: "admin-3",
-    name: "MARCOS_SENA",
-    username: "marcos",
-    role: "ADMIN",
-    email: "marcos.sena@cielo.com.br",
-    password: "1234567",
-    isAdmin: true,
-  },
-]
-
-const initialColumns: Column[] = [
-  { id: "backlog", title: "BACKLOG", tasks: [] },
-  { id: "fazendo", title: "FAZENDO", tasks: [] },
-  { id: "alteracoes", title: "ALTERAÇÕES", tasks: [] },
-  { id: "aprovado", title: "APROVADO", tasks: [] },
-  { id: "feito", title: "FEITO", tasks: [] },
-]
+// ==================== DEFAULT COLUMN IDS ====================
+const DEFAULT_COLUMN_NAMES = ["BACKLOG", "FAZENDO", "ALTERAÇÕES", "APROVADO", "FEITO"]
 
 // ==================== LOGIN SCREEN ====================
 function LoginScreen({
   onLogin,
-  users,
+  isLoading: externalLoading,
 }: {
-  onLogin: (user: TeamMember) => void
-  users: TeamMember[]
+  onLogin: (email: string, password: string) => Promise<void>
+  isLoading: boolean
 }) {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     setError("")
     setIsLoading(true)
-
-    setTimeout(() => {
-      const user = users.find(
-        (u) =>
-          (u.email.toLowerCase() === email.toLowerCase() ||
-            u.username.toLowerCase() === email.toLowerCase().replace("@", "")) &&
-          u.password === password
-      )
-
-      if (user) {
-        onLogin(user)
-      } else {
-        setError("ERRO: CREDENCIAIS_INVÁLIDAS")
-        setIsLoading(false)
-      }
-    }, 600)
+    try {
+      await onLogin(email, password)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "ERRO: FALHA_NO_LOGIN")
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -154,7 +111,7 @@ function LoginScreen({
             {">"} SYSTEM_STATUS: SECURE
           </div>
           <div className="text-[#00FF66]/50 text-xs mb-2">
-            {">"} CONNECTION: ENCRYPTED
+            {">"} CONNECTION: SUPABASE_ENCRYPTED
           </div>
           <div className="text-[#00FF66]/50 text-xs">
             {">"} AWAITING_CREDENTIALS...
@@ -183,6 +140,7 @@ function LoginScreen({
               onChange={(e) => setPassword(e.target.value)}
               placeholder="********"
               className="w-full h-14 px-4 bg-[#1A1A1A] border border-[#262626] text-white text-base placeholder:text-[#00FF66]/30 focus:border-[#00FF66] focus:outline-none"
+              onKeyDown={(e) => e.key === "Enter" && handleLogin()}
             />
           </div>
         </div>
@@ -195,10 +153,10 @@ function LoginScreen({
 
         <button
           onClick={handleLogin}
-          disabled={isLoading || !email || !password}
+          disabled={isLoading || externalLoading || !email || !password}
           className="w-full h-14 border-2 border-[#00FF66] bg-black text-[#00FF66] font-mono text-sm hover:bg-[#00FF66] hover:text-black transition-colors active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {isLoading ? (
+          {isLoading || externalLoading ? (
             <span className="flex items-center justify-center gap-2">
               <span className="animate-pulse">{">"}</span>
               AUTHENTICATING...
@@ -209,7 +167,7 @@ function LoginScreen({
         </button>
 
         <div className="mt-6 text-center text-[#00FF66]/30 text-xs">
-          BROLABTASK_CLI_v2.0 © BRO.LABS
+          BROLABTASK_CLI_v2.0 © BRO.LABS | SUPABASE_CONNECTED
         </div>
       </div>
     </div>
@@ -322,7 +280,7 @@ function ProfileEditModal({
 }: {
   user: TeamMember
   onClose: () => void
-  onSave: (updates: Partial<TeamMember>) => void
+  onSave: (updates: Partial<TeamMember> & { password?: string }) => void
 }) {
   const [name, setName] = useState(user.name)
   const [email, setEmail] = useState(user.email)
@@ -330,7 +288,7 @@ function ProfileEditModal({
   const [role, setRole] = useState(user.role)
 
   const handleSave = () => {
-    const updates: Partial<TeamMember> = {
+    const updates: Partial<TeamMember> & { password?: string } = {
       name: name.toUpperCase().replace(/\s+/g, "_"),
       email,
       role: role.toUpperCase().replace(/\s+/g, "_"),
@@ -419,7 +377,7 @@ function TeamAdminModal({
   team: TeamMember[]
   currentUser: TeamMember
   onClose: () => void
-  onAddMember: (member: TeamMember) => void
+  onAddMember: (member: { name: string; username: string; role: string; email: string; password: string; isAdmin: boolean }) => void
   onDeleteMember: (id: string) => void
 }) {
   const [showAddForm, setShowAddForm] = useState(false)
@@ -433,7 +391,6 @@ function TeamAdminModal({
   const handleSubmit = () => {
     if (newName.trim() && newEmail.trim() && newPassword.trim()) {
       onAddMember({
-        id: Date.now().toString(),
         name: newName.toUpperCase().replace(/\s+/g, "_"),
         username: newUsername.toLowerCase().replace(/\s+/g, ".") || newEmail.split("@")[0],
         role: newRole.toUpperCase().replace(/\s+/g, "_") || "COLLABORATOR",
@@ -808,7 +765,7 @@ function TaskEditModal({
   currentUser: TeamMember
   onClose: () => void
   onSave: (updates: Partial<Task>) => void
-  onAddComment: (comment: Comment) => void
+  onAddComment: (content: string, mentions: string[]) => void
 }) {
   const [title, setTitle] = useState(task.title)
   const [description, setDescription] = useState(task.description)
@@ -831,15 +788,7 @@ function TaskEditModal({
       const mentions = (newComment.match(/@(\w+)/g) || []).map((m) =>
         m.slice(1).toLowerCase()
       )
-      const comment: Comment = {
-        id: Date.now().toString(),
-        authorId: currentUser.id,
-        authorName: currentUser.name,
-        content: newComment.trim(),
-        createdAt: new Date().toISOString(),
-        mentions,
-      }
-      onAddComment(comment)
+      onAddComment(newComment.trim(), mentions)
       setNewComment("")
     }
   }
@@ -875,7 +824,6 @@ function TaskEditModal({
           </div>
 
           <div className="p-4 space-y-6">
-            {/* Title */}
             <div>
               <div className="text-[#00FF66] text-xs mb-2">{">"} TITLE:</div>
               <input
@@ -886,7 +834,6 @@ function TaskEditModal({
               />
             </div>
 
-            {/* Description */}
             <div>
               <div className="text-[#00FF66] text-xs mb-2">{">"} DESCRIPTION:</div>
               <textarea
@@ -897,7 +844,6 @@ function TaskEditModal({
               />
             </div>
 
-            {/* Assignees */}
             <div>
               <div className="text-[#00FF66] text-xs mb-2">{">"} ASSIGNEES:</div>
               <div className="flex flex-wrap gap-2">
@@ -917,14 +863,12 @@ function TaskEditModal({
               </div>
             </div>
 
-            {/* Labels */}
             <LabelManager
               labels={labels}
               onAdd={(label) => setLabels([...labels, label])}
               onRemove={(id) => setLabels(labels.filter((l) => l.id !== id))}
             />
 
-            {/* Comments */}
             <div className="border border-[#262626] p-3">
               <div className="text-[#00FF66] text-xs mb-3">{">"} COMMENT_HISTORY:</div>
               <div className="space-y-3 mb-4 max-h-60 overflow-y-auto">
@@ -963,7 +907,7 @@ function TaskEditModal({
             </div>
 
             <div className="text-[#00FF66]/50 text-xs">
-              {">"} CREATED: {new Date(task.createdAt).toLocaleString("pt-BR")} | ID: {task.id}
+              {">"} CREATED: {new Date(task.createdAt).toLocaleString("pt-BR")} | ID: {task.id.slice(0, 8)}...
             </div>
           </div>
         </div>
@@ -999,7 +943,6 @@ function TaskCard({
       onClick={onEdit}
       className="border border-[#262626] bg-[#1A1A1A] p-3 cursor-pointer hover:border-[#00FF66]/50 transition-colors"
     >
-      {/* Labels */}
       {task.labels.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-2">
           {task.labels.map((label) => (
@@ -1017,14 +960,12 @@ function TaskCard({
         </div>
       )}
 
-      {/* Assignees */}
       <div className="text-[#00FF66] text-xs mb-3 flex flex-wrap gap-1">
         {task.assignees.map((assignee, i) => (
-          <span key={i}>@{assignee}{i < task.assignees.length - 1 ? "," : ""}</span>
+          <span key={i}>@{assignee.toLowerCase().replace(/\s+/g, "_")}{i < task.assignees.length - 1 ? "," : ""}</span>
         ))}
       </div>
 
-      {/* Comments count */}
       {task.comments.length > 0 && (
         <div className="text-[#00FF66]/50 text-xs mb-3">
           [ {task.comments.length} COMMENT{task.comments.length > 1 ? "S" : ""} ]
@@ -1032,7 +973,6 @@ function TaskCard({
       )}
 
       <div className="flex gap-1 flex-wrap" onClick={(e) => e.stopPropagation()}>
-        {/* Vertical movement */}
         <div className="flex flex-col gap-1 mr-1">
           <button
             onClick={() => onMoveVertical("up")}
@@ -1050,7 +990,6 @@ function TaskCard({
           </button>
         </div>
 
-        {/* Horizontal movement */}
         {columnIndex > 0 && (
           <button
             onClick={() => onMove("left")}
@@ -1085,7 +1024,7 @@ function NewTaskForm({
   onCancel,
 }: {
   team: TeamMember[]
-  onSubmit: (task: Omit<Task, "id" | "createdAt" | "comments">) => void
+  onSubmit: (task: { title: string; description: string; assignees: string[] }) => void
   onCancel: () => void
 }) {
   const [title, setTitle] = useState("")
@@ -1108,7 +1047,6 @@ function NewTaskForm({
         title: title.trim(),
         description: description.trim(),
         assignees,
-        labels: [],
       })
     }
   }
@@ -1175,7 +1113,6 @@ function KanbanColumn({
   columnIndex,
   totalColumns,
   team,
-  currentUser,
   onAddTask,
   onMoveTask,
   onMoveTaskVertical,
@@ -1188,8 +1125,7 @@ function KanbanColumn({
   columnIndex: number
   totalColumns: number
   team: TeamMember[]
-  currentUser: TeamMember
-  onAddTask: (task: Omit<Task, "id" | "createdAt" | "comments">) => void
+  onAddTask: (task: { title: string; description: string; assignees: string[] }) => void
   onMoveTask: (taskId: string, direction: "left" | "right") => void
   onMoveTaskVertical: (taskId: string, direction: "up" | "down") => void
   onDeleteTask: (taskId: string) => void
@@ -1203,7 +1139,7 @@ function KanbanColumn({
     <div className="flex-shrink-0 w-72 md:w-80 border border-[#262626] bg-black flex flex-col max-h-full">
       <div className="border-b border-[#262626] p-3 flex items-center justify-between bg-[#1A1A1A]">
         <div className="flex items-center gap-2">
-          <span className="text-[#00FF66] font-bold text-sm">{column.title}</span>
+          <span className="text-[#00FF66] font-bold text-sm">{column.name}</span>
           <span className="text-[#00FF66]/50 text-xs">[{column.tasks.length}]</span>
         </div>
         {!isDefault && (
@@ -1368,22 +1304,66 @@ function Header({
   )
 }
 
+// ==================== LOADING SCREEN ====================
+function LoadingScreen({ message }: { message: string }) {
+  return (
+    <div className="min-h-screen bg-black flex items-center justify-center p-4">
+      <div className="border-2 border-[#00FF66] p-6 md:p-10 w-full max-w-md text-center">
+        <div className="text-[#00FF66] text-2xl md:text-3xl font-bold mb-4">
+          BRO.LABS
+        </div>
+        <div className="text-[#00FF66]/70 text-sm mb-6">
+          {">"} {message}
+          <span className="animate-pulse">_</span>
+        </div>
+        <div className="w-full h-1 bg-[#262626]">
+          <div className="h-full bg-[#00FF66] animate-pulse" style={{ width: "60%" }} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ==================== MAIN BOARD ====================
 function KanbanBoard({
   currentUser,
   team,
-  setTeam,
+  columns,
+  notifications,
   onLogout,
   onUpdateUser,
+  onAddTeamMember,
+  onDeleteTeamMember,
+  onAddColumn,
+  onDeleteColumn,
+  onAddTask,
+  onUpdateTask,
+  onDeleteTask,
+  onMoveTask,
+  onAddComment,
+  onMarkNotificationRead,
+  onClearAllNotifications,
+  refreshData,
 }: {
   currentUser: TeamMember
   team: TeamMember[]
-  setTeam: React.Dispatch<React.SetStateAction<TeamMember[]>>
+  columns: Column[]
+  notifications: Notification[]
   onLogout: () => void
-  onUpdateUser: (updates: Partial<TeamMember>) => void
+  onUpdateUser: (updates: Partial<TeamMember> & { password?: string }) => void
+  onAddTeamMember: (member: { name: string; username: string; role: string; email: string; password: string; isAdmin: boolean }) => void
+  onDeleteTeamMember: (id: string) => void
+  onAddColumn: (name: string) => void
+  onDeleteColumn: (id: string) => void
+  onAddTask: (columnId: string, task: { title: string; description: string; assignees: string[] }) => void
+  onUpdateTask: (taskId: string, updates: Partial<Task>) => void
+  onDeleteTask: (taskId: string) => void
+  onMoveTask: (taskId: string, fromColumnId: string, toColumnId: string, newPosition?: number) => void
+  onAddComment: (taskId: string, content: string, mentions: string[]) => void
+  onMarkNotificationRead: (id: string) => void
+  onClearAllNotifications: () => void
+  refreshData: () => void
 }) {
-  const [columns, setColumns] = useState<Column[]>(initialColumns)
-  const [notifications, setNotifications] = useState<Notification[]>([])
   const [showTeamModal, setShowTeamModal] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
   const [showProfileEdit, setShowProfileEdit] = useState(false)
@@ -1393,198 +1373,22 @@ function KanbanBoard({
     columnId: string
   } | null>(null)
 
-  const defaultColumnIds = [
-    "backlog",
-    "fazendo",
-    "alteracoes",
-    "aprovado",
-    "feito",
-  ]
-
-  const addNotification = (
-    type: Notification["type"],
-    message: string,
-    taskId: string,
-    taskTitle: string,
-    fromUser: string,
-    targetUserId: string
-  ) => {
-    if (targetUserId !== currentUser.id) {
-      const newNotif: Notification = {
-        id: Date.now().toString(),
-        type,
-        message,
-        taskId,
-        taskTitle,
-        fromUser,
-        createdAt: new Date().toISOString(),
-        read: false,
-      }
-      setNotifications((prev) => [newNotif, ...prev])
-    }
-  }
-
-  const addColumn = (title: string) => {
-    const newColumn: Column = {
-      id: Date.now().toString(),
-      title,
-      tasks: [],
-    }
-    setColumns([...columns, newColumn])
-    setShowNewColumnForm(false)
-  }
-
-  const deleteColumn = (columnId: string) => {
-    setColumns(columns.filter((col) => col.id !== columnId))
-  }
-
-  const addTask = (
-    columnId: string,
-    taskData: Omit<Task, "id" | "createdAt" | "comments">
-  ) => {
-    const newTask: Task = {
-      ...taskData,
-      id: Date.now().toString(),
-      comments: [],
-      createdAt: new Date().toISOString(),
-    }
-    setColumns(
-      columns.map((col) =>
-        col.id === columnId ? { ...col, tasks: [...col.tasks, newTask] } : col
-      )
-    )
-  }
-
-  const moveTask = (
-    fromColumnId: string,
-    taskId: string,
-    direction: "left" | "right"
-  ) => {
-    const fromIndex = columns.findIndex((col) => col.id === fromColumnId)
-    const toIndex = direction === "left" ? fromIndex - 1 : fromIndex + 1
-
+  const handleMoveTask = (columnId: string, taskId: string, direction: "left" | "right") => {
+    const columnIndex = columns.findIndex((c) => c.id === columnId)
+    const toIndex = direction === "left" ? columnIndex - 1 : columnIndex + 1
     if (toIndex < 0 || toIndex >= columns.length) return
-
-    const task = columns[fromIndex].tasks.find((t) => t.id === taskId)
-    if (!task) return
-
-    setColumns(
-      columns.map((col, index) => {
-        if (index === fromIndex) {
-          return { ...col, tasks: col.tasks.filter((t) => t.id !== taskId) }
-        }
-        if (index === toIndex) {
-          return { ...col, tasks: [...col.tasks, task] }
-        }
-        return col
-      })
-    )
+    const toColumnId = columns[toIndex].id
+    onMoveTask(taskId, columnId, toColumnId)
   }
 
-  const moveTaskVertical = (
-    columnId: string,
-    taskId: string,
-    direction: "up" | "down"
-  ) => {
-    setColumns(
-      columns.map((col) => {
-        if (col.id !== columnId) return col
-
-        const taskIndex = col.tasks.findIndex((t) => t.id === taskId)
-        if (taskIndex === -1) return col
-
-        const newIndex = direction === "up" ? taskIndex - 1 : taskIndex + 1
-        if (newIndex < 0 || newIndex >= col.tasks.length) return col
-
-        const newTasks = [...col.tasks]
-        const [task] = newTasks.splice(taskIndex, 1)
-        newTasks.splice(newIndex, 0, task)
-
-        return { ...col, tasks: newTasks }
-      })
-    )
-  }
-
-  const deleteTask = (columnId: string, taskId: string) => {
-    setColumns(
-      columns.map((col) =>
-        col.id === columnId
-          ? { ...col, tasks: col.tasks.filter((t) => t.id !== taskId) }
-          : col
-      )
-    )
-  }
-
-  const updateTask = (columnId: string, taskId: string, updates: Partial<Task>) => {
-    setColumns(
-      columns.map((col) =>
-        col.id === columnId
-          ? {
-              ...col,
-              tasks: col.tasks.map((t) =>
-                t.id === taskId ? { ...t, ...updates } : t
-              ),
-            }
-          : col
-      )
-    )
-  }
-
-  const addComment = (columnId: string, taskId: string, comment: Comment) => {
-    const task = columns
-      .find((c) => c.id === columnId)
-      ?.tasks.find((t) => t.id === taskId)
-
-    if (task && comment.mentions.length > 0) {
-      comment.mentions.forEach((username) => {
-        const mentionedUser = team.find(
-          (m) => m.username.toLowerCase() === username
-        )
-        if (mentionedUser) {
-          addNotification(
-            "mention",
-            `@${currentUser.username} mencionou você na tarefa "${task.title}"`,
-            taskId,
-            task.title,
-            currentUser.name,
-            mentionedUser.id
-          )
-        }
-      })
-    }
-
-    setColumns(
-      columns.map((col) =>
-        col.id === columnId
-          ? {
-              ...col,
-              tasks: col.tasks.map((t) =>
-                t.id === taskId
-                  ? { ...t, comments: [...t.comments, comment] }
-                  : t
-              ),
-            }
-          : col
-      )
-    )
-  }
-
-  const addTeamMember = (member: TeamMember) => {
-    setTeam([...team, member])
-  }
-
-  const deleteTeamMember = (id: string) => {
-    setTeam(team.filter((m) => m.id !== id))
-  }
-
-  const markNotificationRead = (id: string) => {
-    setNotifications(
-      notifications.map((n) => (n.id === id ? { ...n, read: true } : n))
-    )
-  }
-
-  const clearAllNotifications = () => {
-    setNotifications([])
+  const handleMoveTaskVertical = (columnId: string, taskId: string, direction: "up" | "down") => {
+    const column = columns.find((c) => c.id === columnId)
+    if (!column) return
+    const taskIndex = column.tasks.findIndex((t) => t.id === taskId)
+    if (taskIndex === -1) return
+    const newPosition = direction === "up" ? taskIndex - 1 : taskIndex + 1
+    if (newPosition < 0 || newPosition >= column.tasks.length) return
+    onMoveTask(taskId, columnId, columnId, newPosition)
   }
 
   return (
@@ -1603,8 +1407,8 @@ function KanbanBoard({
         <NotificationsModal
           notifications={notifications}
           onClose={() => setShowNotifications(false)}
-          onMarkRead={markNotificationRead}
-          onClearAll={clearAllNotifications}
+          onMarkRead={onMarkNotificationRead}
+          onClearAll={onClearAllNotifications}
         />
       )}
 
@@ -1613,8 +1417,8 @@ function KanbanBoard({
           team={team}
           currentUser={currentUser}
           onClose={() => setShowTeamModal(false)}
-          onAddMember={addTeamMember}
-          onDeleteMember={deleteTeamMember}
+          onAddMember={onAddTeamMember}
+          onDeleteMember={onDeleteTeamMember}
         />
       )}
 
@@ -1631,20 +1435,23 @@ function KanbanBoard({
           task={editingTask.task}
           team={team}
           currentUser={currentUser}
-          onClose={() => setEditingTask(null)}
-          onSave={(updates) =>
-            updateTask(editingTask.columnId, editingTask.task.id, updates)
-          }
-          onAddComment={(comment) =>
-            addComment(editingTask.columnId, editingTask.task.id, comment)
-          }
+          onClose={() => {
+            setEditingTask(null)
+            refreshData()
+          }}
+          onSave={(updates) => {
+            onUpdateTask(editingTask.task.id, updates)
+          }}
+          onAddComment={(content, mentions) => {
+            onAddComment(editingTask.task.id, content, mentions)
+          }}
         />
       )}
 
       <div className="flex-1 p-3 md:p-6 overflow-hidden">
         <div className="flex items-center gap-4 mb-4 overflow-x-auto pb-2">
           <div className="text-[#00FF66] text-sm whitespace-nowrap">
-            {">"} BOARD_STATUS: ACTIVE
+            {">"} BOARD_STATUS: SUPABASE_CONNECTED
           </div>
           <div className="text-[#00FF66]/50 text-xs whitespace-nowrap">
             COLUMNS: {columns.length} | TASKS:{" "}
@@ -1660,26 +1467,22 @@ function KanbanBoard({
               columnIndex={index}
               totalColumns={columns.length}
               team={team}
-              currentUser={currentUser}
-              onAddTask={(task) => addTask(column.id, task)}
-              onMoveTask={(taskId, direction) =>
-                moveTask(column.id, taskId, direction)
-              }
-              onMoveTaskVertical={(taskId, direction) =>
-                moveTaskVertical(column.id, taskId, direction)
-              }
-              onDeleteTask={(taskId) => deleteTask(column.id, taskId)}
-              onDeleteColumn={() => deleteColumn(column.id)}
-              onEditTask={(task) =>
-                setEditingTask({ task, columnId: column.id })
-              }
-              isDefault={defaultColumnIds.includes(column.id)}
+              onAddTask={(task) => onAddTask(column.id, task)}
+              onMoveTask={(taskId, direction) => handleMoveTask(column.id, taskId, direction)}
+              onMoveTaskVertical={(taskId, direction) => handleMoveTaskVertical(column.id, taskId, direction)}
+              onDeleteTask={(taskId) => onDeleteTask(taskId)}
+              onDeleteColumn={() => onDeleteColumn(column.id)}
+              onEditTask={(task) => setEditingTask({ task, columnId: column.id })}
+              isDefault={DEFAULT_COLUMN_NAMES.includes(column.name)}
             />
           ))}
 
           {showNewColumnForm ? (
             <NewColumnForm
-              onSubmit={addColumn}
+              onSubmit={(name) => {
+                onAddColumn(name)
+                setShowNewColumnForm(false)
+              }}
               onCancel={() => setShowNewColumnForm(false)}
             />
           ) : (
@@ -1695,7 +1498,7 @@ function KanbanBoard({
 
       <footer className="border-t border-[#262626] p-3 text-center">
         <span className="text-[#00FF66]/30 text-xs">
-          BROLABTASK_CLI_v2.0 © BRO.LABS | SESSION_ACTIVE |{" "}
+          BROLABTASK_CLI_v2.0 © BRO.LABS | SUPABASE_SYNC |{" "}
           {new Date().toLocaleTimeString("pt-BR")}
         </span>
       </footer>
@@ -1706,35 +1509,296 @@ function KanbanBoard({
 // ==================== MAIN APP ====================
 export default function BroLabTask() {
   const [currentUser, setCurrentUser] = useState<TeamMember | null>(null)
-  const [team, setTeam] = useState<TeamMember[]>(initialAdminUsers)
+  const [team, setTeam] = useState<TeamMember[]>([])
+  const [columns, setColumns] = useState<Column[]>([])
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadingMessage, setLoadingMessage] = useState("INITIALIZING_SYSTEM...")
 
-  const handleLogin = (user: TeamMember) => {
-    setCurrentUser(user)
+  // Fetch all data from API
+  const fetchData = useCallback(async () => {
+    try {
+      // Fetch columns
+      const columnsRes = await fetch("/api/columns")
+      const columnsData = await columnsRes.json()
+
+      // Fetch tasks
+      const tasksRes = await fetch("/api/tasks")
+      const tasksData = await tasksRes.json()
+
+      // Fetch users
+      const usersRes = await fetch("/api/users")
+      const usersData = await usersRes.json()
+
+      // Combine columns with their tasks
+      const columnsWithTasks = columnsData.columns.map((col: { id: string; name: string; position: number }) => ({
+        ...col,
+        tasks: tasksData.tasks.filter((t: Task) => t.columnId === col.id).sort((a: Task, b: Task) => a.position - b.position),
+      }))
+
+      setColumns(columnsWithTasks)
+      setTeam(usersData.users)
+    } catch (error) {
+      console.error("Error fetching data:", error)
+    }
+  }, [])
+
+  // Fetch notifications for current user
+  const fetchNotifications = useCallback(async () => {
+    if (!currentUser) return
+    try {
+      const res = await fetch(`/api/notifications?userId=${currentUser.id}`)
+      const data = await res.json()
+      setNotifications(data.notifications || [])
+    } catch (error) {
+      console.error("Error fetching notifications:", error)
+    }
+  }, [currentUser])
+
+  // Initial load
+  useEffect(() => {
+    const init = async () => {
+      setLoadingMessage("CONNECTING_TO_SUPABASE...")
+      await fetchData()
+      setLoadingMessage("SYSTEM_READY")
+      setIsLoading(false)
+    }
+    init()
+  }, [fetchData])
+
+  // Fetch notifications when user logs in
+  useEffect(() => {
+    if (currentUser) {
+      fetchNotifications()
+    }
+  }, [currentUser, fetchNotifications])
+
+  // Login handler
+  const handleLogin = async (email: string, password: string) => {
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      throw new Error(data.error || "ERRO: FALHA_NO_LOGIN")
+    }
+    setCurrentUser(data.user)
   }
 
+  // Logout handler
   const handleLogout = () => {
     setCurrentUser(null)
+    setNotifications([])
   }
 
-  const handleUpdateUser = (updates: Partial<TeamMember>) => {
-    if (currentUser) {
-      const updatedUser = { ...currentUser, ...updates }
-      setCurrentUser(updatedUser)
-      setTeam(team.map((m) => (m.id === currentUser.id ? updatedUser : m)))
+  // Update user profile
+  const handleUpdateUser = async (updates: Partial<TeamMember> & { password?: string }) => {
+    if (!currentUser) return
+    try {
+      const res = await fetch("/api/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: currentUser.id, ...updates }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setCurrentUser(data.user)
+        await fetchData()
+      }
+    } catch (error) {
+      console.error("Error updating user:", error)
     }
   }
 
+  // Add team member
+  const handleAddTeamMember = async (member: { name: string; username: string; role: string; email: string; password: string; isAdmin: boolean }) => {
+    try {
+      await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(member),
+      })
+      await fetchData()
+    } catch (error) {
+      console.error("Error adding team member:", error)
+    }
+  }
+
+  // Delete team member
+  const handleDeleteTeamMember = async (id: string) => {
+    try {
+      await fetch(`/api/users?id=${id}`, { method: "DELETE" })
+      await fetchData()
+    } catch (error) {
+      console.error("Error deleting team member:", error)
+    }
+  }
+
+  // Add column
+  const handleAddColumn = async (name: string) => {
+    try {
+      await fetch("/api/columns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, position: columns.length }),
+      })
+      await fetchData()
+    } catch (error) {
+      console.error("Error adding column:", error)
+    }
+  }
+
+  // Delete column
+  const handleDeleteColumn = async (id: string) => {
+    try {
+      await fetch(`/api/columns?id=${id}`, { method: "DELETE" })
+      await fetchData()
+    } catch (error) {
+      console.error("Error deleting column:", error)
+    }
+  }
+
+  // Add task
+  const handleAddTask = async (columnId: string, task: { title: string; description: string; assignees: string[] }) => {
+    try {
+      const column = columns.find((c) => c.id === columnId)
+      await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...task,
+          columnId,
+          position: column?.tasks.length || 0,
+          createdBy: currentUser?.id,
+        }),
+      })
+      await fetchData()
+    } catch (error) {
+      console.error("Error adding task:", error)
+    }
+  }
+
+  // Update task
+  const handleUpdateTask = async (taskId: string, updates: Partial<Task>) => {
+    try {
+      await fetch("/api/tasks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: taskId, ...updates }),
+      })
+      await fetchData()
+    } catch (error) {
+      console.error("Error updating task:", error)
+    }
+  }
+
+  // Delete task
+  const handleDeleteTask = async (taskId: string) => {
+    try {
+      await fetch(`/api/tasks?id=${taskId}`, { method: "DELETE" })
+      await fetchData()
+    } catch (error) {
+      console.error("Error deleting task:", error)
+    }
+  }
+
+  // Move task
+  const handleMoveTask = async (taskId: string, fromColumnId: string, toColumnId: string, newPosition?: number) => {
+    try {
+      const toColumn = columns.find((c) => c.id === toColumnId)
+      await fetch("/api/tasks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: taskId,
+          columnId: toColumnId,
+          position: newPosition !== undefined ? newPosition : toColumn?.tasks.length || 0,
+        }),
+      })
+      await fetchData()
+    } catch (error) {
+      console.error("Error moving task:", error)
+    }
+  }
+
+  // Add comment
+  const handleAddComment = async (taskId: string, content: string, mentions: string[]) => {
+    if (!currentUser) return
+    try {
+      await fetch("/api/comments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          taskId,
+          userId: currentUser.id,
+          content,
+          mentions,
+        }),
+      })
+      await fetchData()
+      await fetchNotifications()
+    } catch (error) {
+      console.error("Error adding comment:", error)
+    }
+  }
+
+  // Mark notification as read
+  const handleMarkNotificationRead = async (id: string) => {
+    try {
+      await fetch("/api/notifications", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, isRead: true }),
+      })
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+      )
+    } catch (error) {
+      console.error("Error marking notification as read:", error)
+    }
+  }
+
+  // Clear all notifications
+  const handleClearAllNotifications = async () => {
+    if (!currentUser) return
+    try {
+      await fetch(`/api/notifications?userId=${currentUser.id}`, { method: "DELETE" })
+      setNotifications([])
+    } catch (error) {
+      console.error("Error clearing notifications:", error)
+    }
+  }
+
+  if (isLoading) {
+    return <LoadingScreen message={loadingMessage} />
+  }
+
   if (!currentUser) {
-    return <LoginScreen onLogin={handleLogin} users={team} />
+    return <LoginScreen onLogin={handleLogin} isLoading={false} />
   }
 
   return (
     <KanbanBoard
       currentUser={currentUser}
       team={team}
-      setTeam={setTeam}
+      columns={columns}
+      notifications={notifications}
       onLogout={handleLogout}
       onUpdateUser={handleUpdateUser}
+      onAddTeamMember={handleAddTeamMember}
+      onDeleteTeamMember={handleDeleteTeamMember}
+      onAddColumn={handleAddColumn}
+      onDeleteColumn={handleDeleteColumn}
+      onAddTask={handleAddTask}
+      onUpdateTask={handleUpdateTask}
+      onDeleteTask={handleDeleteTask}
+      onMoveTask={handleMoveTask}
+      onAddComment={handleAddComment}
+      onMarkNotificationRead={handleMarkNotificationRead}
+      onClearAllNotifications={handleClearAllNotifications}
+      refreshData={fetchData}
     />
   )
 }
