@@ -11,11 +11,26 @@ export async function POST(request: NextRequest) {
       ? loginIdentifier
       : `@${loginIdentifier.replace(/^@/, "")}`
 
-    const { data: user, error } = await supabase
+    let user = null
+    let error = null
+
+    const byEmail = await supabase
       .from("team_members")
       .select("*")
-      .or(`email.eq.${loginIdentifier},username.eq.${usernameWithAt}`)
-      .single()
+      .eq("email", loginIdentifier)
+      .maybeSingle()
+
+    if (byEmail.data) {
+      user = byEmail.data
+    } else {
+      const byUsername = await supabase
+        .from("team_members")
+        .select("*")
+        .eq("username", usernameWithAt)
+        .maybeSingle()
+      user = byUsername.data
+      error = byUsername.error
+    }
 
     if (error || !user) {
       return NextResponse.json(
