@@ -1,0 +1,131 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --terminal-green: #00FF66;
+  --terminal-green-dim: #00CC52;
+  --terminal-black: #000000;
+  --terminal-gray-dark: #1A1A1A;
+  --terminal-gray: #262626;
+  --terminal-gray-light: #333333;
+  --terminal-white: #FFFFFF;
+  --terminal-red: #FF3333;
+  
+  --background: #000000;
+  --foreground: #00FF66;
+  --card: #1A1A1A;
+  --card-foreground: #FFFFFF;
+  --popover: #1A1A1A;
+  --popover-foreground: #FFFFFF;
+  --primary: #00FF66;
+  --primary-foreground: #000000;
+  --secondary: #262626;
+  --secondary-foreground: #00FF66;
+  --muted: #1A1A1A;
+  --muted-foreground: #666666;
+  --accent: #262626;
+  --accent-foreground: #00FF66;
+  --destructive: #FF3333;
+  --destructive-foreground: #000000;
+  --border: #262626;
+  --input: #1A1A1A;
+  --ring: #00FF66;
+  --radius: 0rem;
+}
+
+@theme inline {
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  --color-terminal-green: var(--terminal-green);
+  --color-terminal-green-dim: var(--terminal-green-dim);
+  --color-terminal-black: var(--terminal-black);
+  --color-terminal-gray-dark: var(--terminal-gray-dark);
+  --color-terminal-gray: var(--terminal-gray);
+  --color-terminal-gray-light: var(--terminal-gray-light);
+  --color-terminal-white: var(--terminal-white);
+  --color-terminal-red: var(--terminal-red);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: 0rem;
+  --radius-md: 0rem;
+  --radius-lg: 0rem;
+  --radius-xl: 0rem;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    border-radius: 0 !important;
+  }
+  body {
+    @apply bg-terminal-black text-terminal-green font-mono;
+  }
+  
+  /* Custom scrollbar for terminal feel */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #000000;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #262626;
+    border: 1px solid #00FF66;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #333333;
+  }
+  
+  /* Remove all rounded corners globally */
+  button, input, select, textarea, [class*="rounded"] {
+    border-radius: 0 !important;
+  }
+}
+
+/* Terminal cursor blink animation */
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.cursor-blink {
+  animation: blink 1s infinite;
+}
+
+/* Scanline effect for extra terminal feel */
+.scanlines::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.15),
+    rgba(0, 0, 0, 0.15) 1px,
+    transparent 1px,
+    transparent 2px
+  );
+  pointer-events: none;
+  z-index: 100;
+}
