@@ -1519,26 +1519,38 @@ export default function BroLabTask() {
   // Fetch all data from API
   const fetchData = useCallback(async () => {
     try {
-      // Fetch columns
-      const columnsRes = await fetch("/api/columns")
-      const columnsData = await columnsRes.json()
+      const [columnsRes, tasksRes, usersRes] = await Promise.all([
+        fetch("/api/columns"),
+        fetch("/api/tasks"),
+        fetch("/api/users"),
+      ])
 
-      // Fetch tasks
-      const tasksRes = await fetch("/api/tasks")
-      const tasksData = await tasksRes.json()
-
-      // Fetch users
-      const usersRes = await fetch("/api/users")
-      const usersData = await usersRes.json()
+      const [columnsData, tasksData, usersData] = await Promise.all([
+        columnsRes.json().catch(() => ({})),
+        tasksRes.json().catch(() => ({})),
+        usersRes.json().catch(() => ({})),
+      ])
 
       // Combine columns with their tasks
-      const columnsWithTasks = columnsData.columns.map((col: { id: string; name: string; position: number }) => ({
+      const columnsList = Array.isArray(columnsData.columns) ? columnsData.columns : []
+      const tasksList = Array.isArray(tasksData.tasks) ? tasksData.tasks : []
+      const usersList = Array.isArray(usersData.users) ? usersData.users : []
+
+      const columnsWithTasks = columnsList.map((col: { id: string; name: string; position: number }) => ({
         ...col,
-        tasks: tasksData.tasks.filter((t: Task) => t.columnId === col.id).sort((a: Task, b: Task) => a.position - b.position),
+        tasks: tasksList.filter((t: Task) => t.columnId === col.id).sort((a: Task, b: Task) => a.position - b.position),
       }))
 
       setColumns(columnsWithTasks)
-      setTeam(usersData.users)
+      setTeam(usersList)
+
+      if (!tasksRes.ok) {
+        console.error("Error loading tasks:", tasksData)
+      }
+
+      if (!usersRes.ok) {
+        console.error("Error loading users:", usersData)
+      }
     } catch (error) {
       console.error("Error fetching data:", error)
     }

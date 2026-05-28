@@ -1,9 +1,10 @@
+import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 import { NextRequest, NextResponse } from "next/server"
 
 export async function GET() {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient() ?? (await createClient())
     const { data: users, error } = await supabase
       .from("team_members")
       .select("id, email, username, name, role, role_id, created_at")
@@ -33,7 +34,14 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const { name, username, email, password, role } = await request.json()
-    const supabase = await createClient()
+    const supabase = createAdminClient()
+
+    if (!supabase) {
+      return NextResponse.json(
+        { error: "ERRO: SUPABASE_SERVICE_ROLE_KEY_NAO_CONFIGURADA" },
+        { status: 500 },
+      )
+    }
 
     const finalUsername = username.startsWith("@") ? username : `@${username}`
 
@@ -79,7 +87,14 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "ID obrigatório" }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
+
+    if (!supabase) {
+      return NextResponse.json(
+        { error: "ERRO: SUPABASE_SERVICE_ROLE_KEY_NAO_CONFIGURADA" },
+        { status: 500 },
+      )
+    }
     const { error } = await supabase.from("team_members").delete().eq("id", id)
 
     if (error) throw error
@@ -96,7 +111,14 @@ export async function DELETE(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const { id, name, email, password, role } = await request.json()
-    const supabase = await createClient()
+    const supabase = createAdminClient()
+
+    if (!supabase) {
+      return NextResponse.json(
+        { error: "ERRO: SUPABASE_SERVICE_ROLE_KEY_NAO_CONFIGURADA" },
+        { status: 500 },
+      )
+    }
 
     const updates: Record<string, string> = {}
     if (name) updates.name = name.toUpperCase().replace(/\s+/g, "_")

@@ -22,7 +22,7 @@ function getLabelColor(name: string): string {
 
 export async function GET() {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient() ?? (await createClient())
 
     const { data: tasks, error } = await supabase
       .from("tasks")
