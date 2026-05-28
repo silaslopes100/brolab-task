@@ -1,10 +1,19 @@
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { NextRequest, NextResponse } from "next/server"
 
 export async function POST(request: NextRequest) {
   try {
     const { email, password } = await request.json()
-    const supabase = await createClient()
+    const supabase = createAdminClient()
+
+    if (!supabase) {
+      return NextResponse.json(
+        {
+          error: "ERRO: SUPABASE_SERVICE_ROLE_KEY_NAO_CONFIGURADA",
+        },
+        { status: 500 },
+      )
+    }
 
     const loginIdentifier = email.toLowerCase().trim()
     const usernameWithAt = loginIdentifier.startsWith("@")

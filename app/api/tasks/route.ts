@@ -1,3 +1,4 @@
+import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 import { NextRequest, NextResponse } from "next/server"
 
@@ -82,7 +83,14 @@ export async function POST(request: NextRequest) {
   try {
     const { title, description, columnId, position, assignees, labels } =
       await request.json()
-    const supabase = await createClient()
+    const supabase = createAdminClient()
+
+    if (!supabase) {
+      return NextResponse.json(
+        { error: "ERRO: SUPABASE_SERVICE_ROLE_KEY_NAO_CONFIGURADA" },
+        { status: 500 },
+      )
+    }
 
     const { data: task, error: taskError } = await supabase
       .from("tasks")
@@ -131,7 +139,14 @@ export async function PATCH(request: NextRequest) {
   try {
     const { id, title, description, columnId, position, assignees, labels } =
       await request.json()
-    const supabase = await createClient()
+    const supabase = createAdminClient()
+
+    if (!supabase) {
+      return NextResponse.json(
+        { error: "ERRO: SUPABASE_SERVICE_ROLE_KEY_NAO_CONFIGURADA" },
+        { status: 500 },
+      )
+    }
 
     const updates: Record<string, unknown> = {}
     if (title !== undefined) updates.title = title
@@ -170,7 +185,14 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "ID obrigatório" }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
+
+    if (!supabase) {
+      return NextResponse.json(
+        { error: "ERRO: SUPABASE_SERVICE_ROLE_KEY_NAO_CONFIGURADA" },
+        { status: 500 },
+      )
+    }
     const { error } = await supabase.from("tasks").delete().eq("id", id)
 
     if (error) throw error
