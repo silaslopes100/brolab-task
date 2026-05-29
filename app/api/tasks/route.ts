@@ -2,6 +2,8 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 import { NextRequest, NextResponse } from "next/server"
 
+const BUCKET_NAME = "task-files"
+
 const LABEL_COLORS = [
   "#FFFFFF",
   "#6B7280",
@@ -46,28 +48,59 @@ export async function GET() {
       }
     }
 
-    const formattedTasks = (tasks || []).map((task) => ({
-      id: task.id,
-      title: task.title,
-      description: task.description || "",
-      columnId: task.status,
-      position: task.position,
-      createdAt: task.created_at,
-      assignees: task.assignees || [],
-      labels: (task.labels || []).map((name: string) => ({
-        id: name,
-        name,
-        color: getLabelColor(name),
-      })),
-      comments: (commentsByTaskId[task.id] || []).map((c) => ({
-        id: c.id,
-        content: c.content,
-        createdAt: c.created_at,
-        authorId: c.author_username,
-        authorName: c.author_username,
-        mentions: [],
-      })),
-    }))
+    const { data: taskFiles, error: filesError } = await supabase
+      .from("task_files")
+      .select("*")
+      .order("created_at", { ascending: true })
+
+    if (filesError) throw filesError
+
+    const filesByTaskId: Record<string, typeof taskFiles> = {}
+    if (taskFiles) {
+      for (const f of taskFiles) {
+        if (!filesByTaskId[f.task_id]) filesByTaskId[f.task_id] = []
+        filesByTaskId[f.task_id].push(f)
+      }
+    }
+
+    const formattedTasks = (tasks || []).map((task) => {
+      const files = (filesByTaskId[task.id] || []).map((f) => {
+        const { data: urlData } = supabase.storage
+          .from(BUCKET_NAME)
+          .getPublicUrl(f.path)
+        return {
+          id: f.id,
+          name: f.name,
+          size: f.size,
+          type: f.type,
+          url: urlData?.publicUrl || "",
+          createdAt: f.created_at,
+        }
+      })
+      return {
+        id: task.id,
+        title: task.title,
+        description: task.description || "",
+        columnId: task.status,
+        position: task.position,
+        createdAt: task.created_at,
+        assignees: task.assignees || [],
+        labels: (task.labels || []).map((name: string) => ({
+          id: name,
+          name,
+          color: getLabelColor(name),
+        })),
+        comments: (commentsByTaskId[task.id] || []).map((c) => ({
+          id: c.id,
+          content: c.content,
+          createdAt: c.created_at,
+          authorId: c.author_username,
+          authorName: c.author_username,
+          mentions: [],
+        })),
+        files,
+      }
+    })
 
     return NextResponse.json({ tasks: formattedTasks })
   } catch (err) {
@@ -124,6 +157,7 @@ export async function POST(request: NextRequest) {
           color: getLabelColor(name),
         })),
         comments: [],
+        files: [],
       },
     })
   } catch (err) {

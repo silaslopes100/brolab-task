@@ -19,6 +19,15 @@ interface Comment {
   mentions: string[]
 }
 
+interface TaskFile {
+  id: string
+  name: string
+  size: number
+  type: string
+  url: string
+  createdAt: string
+}
+
 interface Task {
   id: string
   title: string
@@ -28,6 +37,7 @@ interface Task {
   assignees: string[]
   labels: Label[]
   comments: Comment[]
+  files: TaskFile[]
   createdAt: string
 }
 
@@ -870,6 +880,59 @@ function TaskEditModal({
               onRemove={(id) => setLabels(labels.filter((l) => l.id !== id))}
             />
 
+            <div>
+              <div className="text-[#00FF66] text-xs mb-2">{">"} FILES:</div>
+              <div className="space-y-2 mb-3">
+                {task.files.length === 0 ? (
+                  <div className="text-[#00FF66]/50 text-xs">NO_FILES</div>
+                ) : (
+                  task.files.map((file) => (
+                    <div
+                      key={file.id}
+                      className="flex items-center justify-between border border-[#262626] bg-[#1A1A1A] p-2"
+                    >
+                      <a
+                        href={file.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[#00FF66] text-xs hover:underline truncate flex-1"
+                      >
+                        {file.name}
+                      </a>
+                      <span className="text-[#00FF66]/50 text-xs ml-2 shrink-0">
+                        {(file.size / 1024).toFixed(1)} KB
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer border border-dashed border-[#262626] hover:border-[#00FF66] p-3 transition-colors">
+                <span className="text-[#00FF66] text-xs">[ UPLOAD_FILE ]</span>
+                <input
+                  type="file"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    const formData = new FormData()
+                    formData.append("file", file)
+                    formData.append("taskId", task.id)
+                    try {
+                      const res = await fetch("/api/upload", {
+                        method: "POST",
+                        body: formData,
+                      })
+                      if (res.ok) {
+                        window.location.reload()
+                      }
+                    } catch (err) {
+                      console.error("Upload failed:", err)
+                    }
+                  }}
+                />
+              </label>
+            </div>
+
             <div className="border border-[#262626] p-3">
               <div className="text-[#00FF66] text-xs mb-3">{">"} COMMENT_HISTORY:</div>
               <div className="space-y-3 mb-4 max-h-60 overflow-y-auto">
@@ -971,6 +1034,11 @@ function TaskCard({
       {task.comments.length > 0 && (
         <div className="text-[#00FF66]/50 text-xs mb-3">
           [ {task.comments.length} COMMENT{task.comments.length > 1 ? "S" : ""} ]
+        </div>
+      )}
+      {task.files && task.files.length > 0 && (
+        <div className="text-[#00FF66]/50 text-xs mb-3">
+          [ {task.files.length} FILE{task.files.length > 1 ? "S" : ""} ]
         </div>
       )}
 
