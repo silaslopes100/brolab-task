@@ -1,0 +1,130 @@
+{
+  "generated_at": "2026-05-29T00:00:00Z",
+  "project_root": "c:/Users/mssve/Documents/DEV/Brolabs/brolab-task",
+  "languages": [
+    { "name": "TypeScript React", "extensions": [".tsx"], "file_count": 59 },
+    { "name": "TypeScript", "extensions": [".ts"], "file_count": 17 },
+    { "name": "JavaScript (ESM)", "extensions": [".mjs"], "file_count": 2 },
+    { "name": "CSS", "extensions": [".css"], "file_count": 2 },
+    { "name": "SQL", "extensions": [".sql"], "file_count": 1 }
+  ],
+  "primary_language": "TypeScript",
+  "frameworks": [
+    { "name": "Next.js", "version": "16.2.6", "source": "package.json" },
+    { "name": "React", "version": "^19", "source": "package.json" },
+    { "name": "Tailwind CSS", "version": "^4.2.0", "source": "package.json" },
+    { "name": "shadcn/ui (Radix UI)", "version": "various", "source": "components.json + package.json" },
+    { "name": "Supabase SSR", "version": "^0.10.3", "source": "package.json" },
+    { "name": "React Hook Form", "version": "^7.54.1", "source": "package.json" },
+    { "name": "Zod", "version": "^3.24.1", "source": "package.json" },
+    { "name": "Recharts", "version": "2.15.0", "source": "package.json" }
+  ],
+  "package_manager": "bun",
+  "package_manager_alternatives": ["pnpm", "npm"],
+  "entry_points": [
+    { "path": "app/layout.tsx", "type": "app_entry", "description": "Root layout — JetBrains Mono, Vercel Analytics, metadata" },
+    { "path": "app/page.tsx", "type": "spa_entry", "description": "Aplicação Kanban SPA monolítica (client component, ~1500+ LOC)" },
+    { "path": "app/api/auth/login/route.ts", "type": "api_route", "description": "POST /api/auth/login" },
+    { "path": "app/api/tasks/route.ts", "type": "api_route", "description": "GET/POST/PATCH/DELETE /api/tasks" },
+    { "path": "app/api/columns/route.ts", "type": "api_route", "description": "GET/POST/DELETE /api/columns" },
+    { "path": "app/api/comments/route.ts", "type": "api_route", "description": "POST /api/comments" },
+    { "path": "app/api/files/route.ts", "type": "api_route", "description": "GET/DELETE /api/files" },
+    { "path": "app/api/labels/route.ts", "type": "api_route", "description": "GET/POST/DELETE /api/labels" },
+    { "path": "app/api/notifications/route.ts", "type": "api_route", "description": "GET/PATCH/DELETE /api/notifications" },
+    { "path": "app/api/upload/route.ts", "type": "api_route", "description": "POST /api/upload (multipart/form-data)" },
+    { "path": "app/api/users/route.ts", "type": "api_route", "description": "GET/POST /api/users" },
+    { "path": "scripts/dev-server.mjs", "type": "script", "description": "Dev server com port autodiscovery dinâmico (Bun)" }
+  ],
+  "config_files": [
+    ".env.local",
+    "next.config.mjs",
+    "tsconfig.json",
+    "vercel.json",
+    "components.json",
+    "postcss.config.mjs"
+  ],
+  "ci_cd": [],
+  "docker": null,
+  "deploy": {
+    "platform": "Vercel",
+    "config": "vercel.json",
+    "trigger": "push to main"
+  },
+  "database_hints": [
+    { "path": "supabase/migrations/001_create_task_files.sql", "type": "migration_sql", "description": "DDL tabela task_files" },
+    { "path": "lib/supabase/admin.ts", "type": "supabase_admin_client" },
+    { "path": "lib/supabase/server.ts", "type": "supabase_ssr_server_client" },
+    { "path": "lib/supabase/client.ts", "type": "supabase_browser_client" }
+  ],
+  "database_tables_inferred": [
+    "tasks",
+    "task_comments",
+    "task_files",
+    "team_members",
+    "notifications"
+  ],
+  "storage_buckets_inferred": [
+    "task-files"
+  ],
+  "test_framework": null,
+  "test_file_count": 0,
+  "test_coverage_estimate": "0%",
+  "modules": [
+    "auth",
+    "tasks",
+    "columns",
+    "comments",
+    "files",
+    "upload",
+    "labels",
+    "notifications",
+    "users",
+    "lib/supabase",
+    "components/ui",
+    "kanban-app"
+  ],
+  "total_files": 86,
+  "external_integrations": [
+    { "name": "Supabase", "type": "BaaS", "usage": "PostgreSQL + Storage + auth customizada (team_members)" },
+    { "name": "Vercel", "type": "hosting/deploy", "usage": "Hospedagem e CI/CD automático" },
+    { "name": "Vercel Analytics", "type": "analytics", "usage": "Métricas de uso em produção" },
+    { "name": "v0.app", "type": "AI code generator", "usage": "Plataforma de origem do projeto (bootstrap + iterações)" }
+  ],
+  "security_notes": [
+    { "severity": "CRITICAL", "note": "Senha armazenada em plaintext na tabela team_members. Nenhum hash (bcrypt/argon2) detectado." },
+    { "severity": "HIGH", "note": "Autenticação customizada sem uso de Supabase Auth — sem proteção de sessão nativa, tokens, refresh etc." }
+  ],
+  "organization_suggestion": {
+    "granularity": "hybrid",
+    "rationale": "O projeto tem dois sinais com peso similar: roteamento centralizado via Next.js Route Handlers (app/api/<recurso>/route.ts) e pastas organizadas por domínio (tasks, users, notifications). A SPA monolítica em page.tsx adiciona um terceiro eixo (feature/componente).",
+    "signals": [
+      {
+        "type": "centralized_routing",
+        "evidence": [
+          "app/api/tasks/route.ts",
+          "app/api/users/route.ts",
+          "app/api/notifications/route.ts",
+          "app/api/comments/route.ts",
+          "app/api/auth/login/route.ts"
+        ]
+      },
+      {
+        "type": "top_level_domain_folders",
+        "evidence": [
+          "app/api/tasks/",
+          "app/api/users/",
+          "app/api/notifications/",
+          "app/api/files/",
+          "app/api/labels/"
+        ]
+      },
+      {
+        "type": "monolithic_spa",
+        "evidence": [
+          "app/page.tsx"
+        ]
+      }
+    ],
+    "features": []
+  }
+}

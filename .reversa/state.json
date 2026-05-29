@@ -1,0 +1,126 @@
+{
+  "version": "1.0.0",
+  "project": "BrolabTask",
+  "user_name": "Marcos",
+  "chat_language": "pt-br",
+  "doc_language": "Português",
+  "answer_mode": "chat",
+  "doc_level": "detalhado",
+  "output_folder": "_reversa_sdd",
+  "phase": "concluido",
+  "completed": ["reconhecimento", "escavacao", "interpretacao_detective", "interpretacao_architect", "geracao", "revisao"],
+  "pending": [],
+  "engines": ["copilot"],
+  "agents": ["reversa", "reversa-scout", "reversa-archaeologist", "reversa-detective", "reversa-architect"],
+  "checkpoints": {
+    "scout": {
+      "completed_at": "2026-05-29T00:00:00Z",
+      "files": [
+        "_reversa_sdd/inventory.md",
+        "_reversa_sdd/dependencies.md",
+        ".reversa/context/surface.json"
+      ]
+    },
+    "detective": {
+      "completed_at": "2026-05-29T00:00:00Z",
+      "business_rules_count": 13,
+      "adrs_count": 7,
+      "state_machines": ["task", "notification", "session"],
+      "files": [
+        "_reversa_sdd/domain.md",
+        "_reversa_sdd/state-machines.md",
+        "_reversa_sdd/permissions.md",
+        "_reversa_sdd/adrs/001-bootstrap-v0-dev.md",
+        "_reversa_sdd/adrs/002-autenticacao-customizada.md",
+        "_reversa_sdd/adrs/003-service-role-bypass-rls.md",
+        "_reversa_sdd/adrs/004-login-split-query.md",
+        "_reversa_sdd/adrs/005-publishable-key-fallback.md",
+        "_reversa_sdd/adrs/006-upload-supabase-storage.md",
+        "_reversa_sdd/adrs/007-realtime-notifications.md"
+      ]
+    },
+    "archaeologist": {
+      "completed_at": "2026-05-29T00:00:00Z",
+      "modules_analyzed": ["auth", "tasks", "columns", "comments", "files", "upload", "labels", "notifications", "users", "lib-supabase", "kanban-app"],
+      "files": [
+        "_reversa_sdd/code-analysis.md",
+        "_reversa_sdd/data-dictionary.md",
+        ".reversa/context/modules.json",
+        "_reversa_sdd/flowcharts/auth.md",
+        "_reversa_sdd/flowcharts/auth-POST.md",
+        "_reversa_sdd/flowcharts/tasks.md",
+        "_reversa_sdd/flowcharts/tasks-GET-aggregation.md",
+        "_reversa_sdd/flowcharts/columns.md",
+        "_reversa_sdd/flowcharts/comments.md",
+        "_reversa_sdd/flowcharts/comments-POST-mention.md",
+        "_reversa_sdd/flowcharts/files.md",
+        "_reversa_sdd/flowcharts/upload.md",
+        "_reversa_sdd/flowcharts/labels.md",
+        "_reversa_sdd/flowcharts/notifications.md",
+        "_reversa_sdd/flowcharts/users.md",
+        "_reversa_sdd/flowcharts/lib-supabase.md",
+        "_reversa_sdd/flowcharts/kanban-app.md",
+        "_reversa_sdd/flowcharts/kanban-app-fetchData.md",
+        "_reversa_sdd/flowcharts/kanban-app-MentionInput.md"
+      ]
+    },
+    "architect": {
+      "completed_at": "2026-05-29T00:00:00Z",
+      "diagrams": ["C4-Context", "C4-Containers", "C4-Components", "ERD", "SpecImpactMatrix", "Deployment", "Architecture"],
+      "technical_debts_count": 17,
+      "files": [
+        "_reversa_sdd/architecture.md",
+        "_reversa_sdd/c4-context.md",
+        "_reversa_sdd/c4-containers.md",
+        "_reversa_sdd/c4-components.md",
+        "_reversa_sdd/erd-complete.md",
+        "_reversa_sdd/deployment.md",
+        "_reversa_sdd/traceability/spec-impact-matrix.md"
+      ]
+    },
+    "writer": {
+      "completed_at": "2026-05-29T00:00:00Z",
+      "modules_total": 11,
+      "modules": ["autenticacao","tarefas","colunas","comentarios","arquivos","upload","etiquetas","notificacoes","usuarios","lib-supabase","kanban-app"],
+      "globals": ["openapi","user-stories","traceability/code-spec-matrix"],
+      "specs_total": 126,
+      "critical_issues": ["plaintext_password","no_auth_on_routes","labels_no_persistence","column_post_in_memory","column_delete_noop","label_get_hardcoded_empty","label_delete_noop","upload_window_reload"]
+    },
+    "reviewer": {
+      "completed_at": "2026-05-29T00:00:00Z",
+      "modules_reviewed": 11,
+      "confidence_high": 9,
+      "confidence_medium": 2,
+      "confidence_low": 0,
+      "overall_confidence_pct": 82,
+      "gaps_total": 26,
+      "gaps_critico": 8,
+      "gaps_moderado": 12,
+      "gaps_cosmetico": 6,
+      "new_bugs_found": ["mention_username_prefix_mismatch"],
+      "questions_pending": 8,
+      "files": [
+        "_reversa_sdd/confidence-report.md",
+        "_reversa_sdd/gaps.md",
+        "_reversa_sdd/questions.md"
+      ]
+    }
+  },
+  "created_files": [
+    ".reversa/state.json",
+    ".reversa/plan.md",
+    "_reversa_sdd/inventory.md",
+    "_reversa_sdd/dependencies.md",
+    ".reversa/context/surface.json",
+    "_reversa_sdd/code-analysis.md",
+    "_reversa_sdd/data-dictionary.md",
+    ".reversa/context/modules.json",
+    "_reversa_sdd/architecture.md",
+    "_reversa_sdd/c4-context.md",
+    "_reversa_sdd/c4-containers.md",
+    "_reversa_sdd/c4-components.md",
+    "_reversa_sdd/erd-complete.md",
+    "_reversa_sdd/deployment.md",
+    "_reversa_sdd/traceability/spec-impact-matrix.md"
+  ]
+}

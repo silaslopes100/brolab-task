@@ -142,6 +142,23 @@ export async function POST(request: NextRequest) {
 
     if (taskError) throw taskError
 
+    // Notify all users about the new task
+    const { data: allUsers, error: usersError } = await supabase
+      .from('team_members')
+      .select('id')
+    if (!usersError && allUsers && allUsers.length > 0) {
+      const notifInserts = allUsers.map((u) => ({
+        user_id: u.id,
+        type: 'task_created',
+        message: `Nova tarefa criada: ${task.title}`,
+        task_id: task.id,
+        task_title: task.title,
+        from_user: '',
+        read: false,
+      }))
+      await supabase.from('notifications').insert(notifInserts)
+    }
+
     return NextResponse.json({
       task: {
         id: task.id,

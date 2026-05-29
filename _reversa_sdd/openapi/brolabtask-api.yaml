@@ -1,0 +1,644 @@
+openapi: "3.0.3"
+info:
+  title: BrolabTask API
+  version: "2.0"
+  description: |
+    API REST do BrolabTask — Kanban CLI-themed. Todos os endpoints são Route Handlers do Next.js App Router.
+    Base URL: /api
+    Autenticação: **Nenhuma** (todos os endpoints são públicos) 🔴 CRÍTICO
+
+servers:
+  - url: /api
+
+paths:
+  /auth/login:
+    post:
+      summary: Autenticar usuário
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  description: Email ou @username
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Autenticado com sucesso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: "#/components/schemas/TeamMember"
+        "401":
+          description: Credenciais inválidas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Erro interno (admin client null)
+
+  /tasks:
+    get:
+      summary: Listar todas as tarefas
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tasks:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Task"
+    post:
+      summary: Criar tarefa
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, columnId]
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                columnId:
+                  type: string
+                  format: uuid
+                position:
+                  type: integer
+                assignees:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task:
+                    $ref: "#/components/schemas/Task"
+    patch:
+      summary: Atualizar tarefa (incluindo mover entre colunas)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                title:
+                  type: string
+                description:
+                  type: string
+                columnId:
+                  type: string
+                  format: uuid
+                position:
+                  type: integer
+                assignees:
+                  type: array
+                  items:
+                    type: string
+                labels:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/Label"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task:
+                    $ref: "#/components/schemas/Task"
+    delete:
+      summary: Deletar tarefa e seus arquivos
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+
+  /columns:
+    get:
+      summary: Listar colunas
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  columns:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Column"
+    post:
+      summary: Criar coluna (atualmente in-memory) 🔴
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                position:
+                  type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  column:
+                    $ref: "#/components/schemas/Column"
+    delete:
+      summary: Deletar coluna (atualmente no-op) 🔴
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+
+  /comments:
+    post:
+      summary: Adicionar comentário a uma tarefa
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [taskId, authorUsername, content]
+              properties:
+                taskId:
+                  type: string
+                  format: uuid
+                authorUsername:
+                  type: string
+                content:
+                  type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  comment:
+                    $ref: "#/components/schemas/Comment"
+
+  /files:
+    delete:
+      summary: Deletar arquivo de uma tarefa
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+
+  /upload:
+    post:
+      summary: Upload de arquivo para Supabase Storage
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, taskId]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                taskId:
+                  type: string
+                  format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  file:
+                    $ref: "#/components/schemas/TaskFile"
+
+  /labels:
+    get:
+      summary: Listar labels (retorna [] hardcoded) 🔴
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  labels:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Label"
+    post:
+      summary: Criar label
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, color]
+              properties:
+                name:
+                  type: string
+                color:
+                  type: string
+                  pattern: "^#[0-9A-Fa-f]{6}$"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  label:
+                    $ref: "#/components/schemas/Label"
+    delete:
+      summary: Deletar label (atualmente no-op) 🔴
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+
+  /notifications:
+    get:
+      summary: Listar notificações do usuário
+      parameters:
+        - name: userId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notifications:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Notification"
+    patch:
+      summary: Marcar notificação como lida
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                isRead:
+                  type: boolean
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notification:
+                    $ref: "#/components/schemas/Notification"
+    delete:
+      summary: Deletar todas as notificações do usuário
+      parameters:
+        - name: userId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+
+  /users:
+    get:
+      summary: Listar membros do time
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TeamMember"
+    post:
+      summary: Criar membro do time
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name:
+                  type: string
+                username:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  description: "🔴 CRÍTICO: Armazenado em plaintext"
+                role:
+                  type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: "#/components/schemas/TeamMember"
+    patch:
+      summary: Atualizar perfil de membro
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                name:
+                  type: string
+                email:
+                  type: string
+                role:
+                  type: string
+                password:
+                  type: string
+                  description: "🔴 CRÍTICO: Armazenado em plaintext"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: "#/components/schemas/TeamMember"
+    delete:
+      summary: Deletar membro do time
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+
+components:
+  schemas:
+    TeamMember:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        username:
+          type: string
+        role:
+          type: string
+        email:
+          type: string
+        isAdmin:
+          type: boolean
+
+    Task:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        columnId:
+          type: string
+          format: uuid
+        position:
+          type: integer
+        assignees:
+          type: array
+          items:
+            type: string
+        labels:
+          type: array
+          items:
+            $ref: "#/components/schemas/Label"
+        comments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Comment"
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/TaskFile"
+        createdAt:
+          type: string
+          format: date-time
+
+    Column:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        position:
+          type: integer
+
+    Label:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        color:
+          type: string
+          pattern: "^#[0-9A-Fa-f]{6}$"
+
+    Comment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        authorId:
+          type: string
+        authorName:
+          type: string
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        mentions:
+          type: array
+          items:
+            type: string
+
+    TaskFile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        size:
+          type: integer
+          description: Tamanho em bytes
+        type:
+          type: string
+        url:
+          type: string
+          format: uri
+        createdAt:
+          type: string
+          format: date-time
+
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [mention, assignment, comment]
+        message:
+          type: string
+        taskId:
+          type: string
+          format: uuid
+        taskTitle:
+          type: string
+        fromUser:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        read:
+          type: boolean
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string

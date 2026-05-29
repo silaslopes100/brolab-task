@@ -1,0 +1,6 @@
+[specs]
+layout = "feature-folder"
+granularity = "hybrid"
+custom_folders = []
+scout_suggestion = "hybrid"
+decided_at = "2026-05-29T00:00:00Z"
