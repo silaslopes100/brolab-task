@@ -13,17 +13,46 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { data: comment, error } = await supabase
-      .from("task_comments")
-      .insert({
-        task_id: taskId,
-        author_username: authorUsername,
-        content,
-      })
-      .select()
-      .single()
+    const mentions = (content.match(/@([\w]+)/g) || []).map((m) => m.slice(1))
+    // Insert notifications for each mentioned user
+    if (mentions.length > 0) {
+      // Fetch user IDs for mentioned usernames
+      const { data: mentionedUsers, error: usersError } = await supabase
+        .from('team_members')
+        .select('id, username')
+        .in('username', mentions)
 
-    if (error) throw error
+      if (!usersError && mentionedUsers && mentionedUsers.length > 0) {
+        // Get task title for notification message
+        const { data: taskData, error: taskError } = await supabase
+          .from('tasks')
+          .select('title')
+          .eq('id', taskId)
+          .single()
+        const taskTitle = taskData?.title || ''
+        const notifInserts = mentionedUsers.map((u) => ({
+          user_id: u.id,
+          type: 'mention',
+          message: `${authorUsername} mencionou você na tarefa "${taskTitle}"`,
+          task_id: taskId,
+          task_title: taskTitle,
+          from_user: authorUsername,
+          read: false,
+        }))
+        await supabase.from('notifications').insert(notifInserts)
+      }
+    }
+
+    const { data: comment, error } = await supabase
+  .from("task_comments")
+  .insert({
+    task_id: taskId,
+    author_username: authorUsername,
+    content,
+  })
+  .select()
+  .single()
+if (error) throw error
 
     return NextResponse.json({
       comment: {
