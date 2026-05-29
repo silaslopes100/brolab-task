@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
+import { createClient } from "@/lib/supabase/client"
 
 // ==================== TYPES ====================
 interface Label {
@@ -1579,10 +1580,42 @@ export default function BroLabTask() {
     init()
   }, [fetchData])
 
-  // Fetch notifications when user logs in
+  // Subscribe to realtime notifications for current user and fetch initial list
   useEffect(() => {
-    if (currentUser) {
-      fetchNotifications()
+    if (!currentUser) return
+    // Load existing notifications
+    fetchNotifications()
+    const supabase = createClient()
+    const channel = supabase
+      .channel(`notifications_user_${currentUser.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          // Adjust filter field name if needed
+          filter: `user_id=eq.${currentUser.id}`,
+        },
+        (payload) => {
+          const n = payload.new
+          const newNotif = {
+            id: n.id,
+            type: n.type,
+            message: n.message,
+            taskId: n.task_id,
+            taskTitle: n.task_title,
+            fromUser: n.from_user,
+            createdAt: n.created_at,
+            read: n.read,
+          }
+          setNotifications((prev) => [newNotif, ...prev])
+        },
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
     }
   }, [currentUser, fetchNotifications])
 
