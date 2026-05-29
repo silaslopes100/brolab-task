@@ -217,6 +217,35 @@ export async function PATCH(request: NextRequest) {
       if (taskError) throw taskError
     }
 
+    // Notify all users about task update
+    // Determine task title for notification message
+    let taskTitle = ''
+    if (title) {
+      taskTitle = title as string
+    } else {
+      const { data: taskData, error: taskFetchError } = await supabase
+        .from('tasks')
+        .select('title')
+        .eq('id', id)
+        .single()
+      taskTitle = taskData?.title || ''
+    }
+    const { data: allUsers, error: usersError } = await supabase
+      .from('team_members')
+      .select('id')
+    if (!usersError && allUsers && allUsers.length > 0) {
+      const notifInserts = allUsers.map((u) => ({
+        user_id: u.id,
+        type: 'task_updated',
+        message: `Tarefa atualizada: ${taskTitle}`,
+        task_id: id,
+        task_title: taskTitle,
+        from_user: '',
+        read: false,
+      }))
+      await supabase.from('notifications').insert(notifInserts)
+    }
+
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error("Error updating task:", err)
@@ -244,9 +273,34 @@ export async function DELETE(request: NextRequest) {
         { status: 500 },
       )
     }
+    // Fetch task title before deletion for notification
+    const { data: taskData, error: fetchError } = await supabase
+      .from('tasks')
+      .select('title')
+      .eq('id', id)
+      .single()
+    const taskTitle = taskData?.title || ''
+
     const { error } = await supabase.from("tasks").delete().eq("id", id)
 
     if (error) throw error
+
+    // Notify all users about task deletion
+    const { data: allUsers, error: usersError } = await supabase
+      .from('team_members')
+      .select('id')
+    if (!usersError && allUsers && allUsers.length > 0) {
+      const notifInserts = allUsers.map((u) => ({
+        user_id: u.id,
+        type: 'task_deleted',
+        message: `Tarefa excluída: ${taskTitle}`,
+        task_id: id,
+        task_title: taskTitle,
+        from_user: '',
+        read: false,
+      }))
+      await supabase.from('notifications').insert(notifInserts)
+    }
 
     return NextResponse.json({ success: true })
   } catch {
