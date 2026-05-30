@@ -63,7 +63,30 @@ export async function GET() {
       }
     }
 
+    const { data: allSubtasks, error: subtasksError } = await supabase
+      .from("subtasks")
+      .select("id, task_id, estimated_hours, time_spent, timer_started_at, status")
+
+    const subtaskAggByTaskId: Record<string, { count: number; totalEstimated: number; totalTimeSpent: number }> = {}
+    if (!subtasksError && allSubtasks) {
+      for (const st of allSubtasks) {
+        if (!subtaskAggByTaskId[st.task_id]) {
+          subtaskAggByTaskId[st.task_id] = { count: 0, totalEstimated: 0, totalTimeSpent: 0 }
+        }
+        const agg = subtaskAggByTaskId[st.task_id]
+        agg.count++
+        agg.totalEstimated += st.estimated_hours || 0
+        const now = Date.now()
+        const startedAt = st.timer_started_at ? new Date(st.timer_started_at).getTime() : null
+        const liveTime = startedAt
+          ? (st.time_spent || 0) + (now - startedAt) / 1000
+          : (st.time_spent || 0)
+        agg.totalTimeSpent += Math.round(liveTime)
+      }
+    }
+
     const formattedTasks = (tasks || []).map((task) => {
+      const subtaskAgg = subtaskAggByTaskId[task.id] || { count: 0, totalEstimated: 0, totalTimeSpent: 0 }
       const files = (filesByTaskId[task.id] || []).map((f) => {
         const { data: urlData } = supabase.storage
           .from(BUCKET_NAME)
@@ -85,11 +108,13 @@ export async function GET() {
         position: task.position,
         createdAt: task.created_at,
         assignees: task.assignees || [],
-        labels: (task.labels || []).map((name: string) => ({
-          id: name,
-          name,
-          color: getLabelColor(name),
-        })),
+        labels: (task.labels || []).map((raw: string) => {
+          const [name, color] = raw.split('||')
+          return { id: name, name, color: color || getLabelColor(name) }
+        }),
+        subtaskCount: subtaskAgg.count,
+        totalEstimatedHours: subtaskAgg.totalEstimated,
+        totalTimeSpent: subtaskAgg.totalTimeSpent,
         comments: (commentsByTaskId[task.id] || []).map((c) => ({
           id: c.id,
           content: c.content,
@@ -134,7 +159,7 @@ export async function POST(request: NextRequest) {
         position: position || 0,
         assignees: assignees || [],
         labels: labels
-          ? labels.map((l: { name: string }) => l.name)
+          ? labels.map((l: { name: string; color?: string }) => `${l.name}||${l.color || getLabelColor(l.name)}`)
           : [],
       })
       .select()
@@ -168,11 +193,13 @@ export async function POST(request: NextRequest) {
         position: task.position,
         createdAt: task.created_at,
         assignees: task.assignees || [],
-        labels: (task.labels || []).map((name: string) => ({
-          id: name,
-          name,
-          color: getLabelColor(name),
-        })),
+        labels: (task.labels || []).map((raw: string) => {
+          const [name, color] = raw.split('||')
+          return { id: name, name, color: color || getLabelColor(name) }
+        }),
+        subtaskCount: 0,
+        totalEstimatedHours: 0,
+        totalTimeSpent: 0,
         comments: [],
         files: [],
       },
@@ -206,7 +233,7 @@ export async function PATCH(request: NextRequest) {
     if (position !== undefined) updates.position = position
     if (assignees !== undefined) updates.assignees = assignees
     if (labels !== undefined)
-      updates.labels = labels.map((l: { name: string }) => l.name)
+      updates.labels = labels.map((l: { name: string; color?: string }) => `${l.name}||${l.color || getLabelColor(l.name)}`)
 
     if (Object.keys(updates).length > 0) {
       const { error: taskError } = await supabase

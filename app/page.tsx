@@ -16,7 +16,23 @@ interface Comment {
   authorName: string
   content: string
   createdAt: string
-  mentions: string[]
+  mentions?: string[]
+  subtaskId?: string | null
+}
+
+interface Subtask {
+  id: string
+  taskId: string
+  title: string
+  description: string
+  estimatedHours: number
+  timeSpent: number
+  status: string
+  position: number
+  assignees: string[]
+  comments: Comment[]
+  timerStartedAt: string | null
+  createdAt: string
 }
 
 interface TaskFile {
@@ -38,6 +54,9 @@ interface Task {
   labels: Label[]
   comments: Comment[]
   files: TaskFile[]
+  subtaskCount?: number
+  totalEstimatedHours?: number
+  totalTimeSpent?: number
   createdAt: string
 }
 
@@ -762,6 +781,136 @@ function MentionInput({
   )
 }
 
+// ==================== SUBTASK ROW ====================
+function SubtaskRow({
+  subtask,
+  onUpdateStatus,
+  onAddComment,
+  currentUser,
+  team,
+}: {
+  subtask: Subtask
+  onUpdateStatus: (id: string, newStatus: string) => void
+  onAddComment: (subtaskId: string, content: string) => void
+  currentUser: TeamMember
+  team: TeamMember[]
+}) {
+  const [showComments, setShowComments] = useState(false)
+  const [newComment, setNewComment] = useState("")
+  const [liveTime, setLiveTime] = useState(subtask.timeSpent)
+
+  useEffect(() => {
+    if (!subtask.timerStartedAt) {
+      setLiveTime(subtask.timeSpent)
+      return
+    }
+    const interval = setInterval(() => {
+      const elapsed = (Date.now() - new Date(subtask.timerStartedAt).getTime()) / 1000
+      setLiveTime(subtask.timeSpent + Math.round(elapsed))
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [subtask.timerStartedAt, subtask.timeSpent])
+
+  const STATUS_ORDER = ["BACKLOG", "FAZENDO", "ALTERAÇÕES", "APROVADO", "FEITO"]
+  const currentIndex = STATUS_ORDER.indexOf(subtask.status)
+  const isTimerRunning = !!subtask.timerStartedAt
+
+  const formatTime = (seconds: number) => {
+    const h = Math.floor(seconds / 3600)
+    const m = Math.floor((seconds % 3600) / 60)
+    const s = seconds % 60
+    return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`
+  }
+
+  const handleAddComment = async () => {
+    if (!newComment.trim()) return
+    await onAddComment(subtask.id, newComment.trim())
+    setNewComment("")
+  }
+
+  const compareBar = () => {
+    const est = subtask.estimatedHours * 3600
+    if (est === 0) return null
+    const pct = Math.min((liveTime / est) * 100, 100)
+    const color = liveTime > est ? "#FF3333" : "#00FF66"
+    return (
+      <div className="mt-2">
+        <div className="flex justify-between text-[10px] text-[#00FF66]/50 mb-1">
+          <span>Estimado: {subtask.estimatedHours}h</span>
+          <span>Real: {formatTime(liveTime)}</span>
+        </div>
+        <div className="w-full h-1.5 bg-[#262626]">
+          <div
+            className="h-full transition-all"
+            style={{ width: `${pct}%`, backgroundColor: color }}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="border border-[#262626] bg-[#1A1A1A] p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="text-white text-sm font-bold break-words">{subtask.title}</div>
+          {subtask.description && (
+            <div className="text-white/60 text-xs mt-1 break-words">{subtask.description}</div>
+          )}
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
+            <span className={`text-xs px-1.5 py-0.5 border ${isTimerRunning ? "border-[#00FF66] text-[#00FF66] animate-pulse" : "border-[#262626] text-[#00FF66]/70"}`}>
+              {isTimerRunning ? "▶ CRONOMETRO" : subtask.status}
+            </span>
+            <span className="text-xs text-[#00FF66]/70">{formatTime(liveTime)}</span>
+            {subtask.estimatedHours > 0 && (
+              <span className="text-xs text-[#00FF66]/50">EST: {subtask.estimatedHours}h</span>
+            )}
+          </div>
+          {compareBar()}
+          <div className="flex gap-1 mt-2 flex-wrap">
+            {currentIndex > 0 && (
+              <button onClick={() => onUpdateStatus(subtask.id, STATUS_ORDER[currentIndex - 1])}
+                className="h-6 px-1.5 border border-[#262626] text-[#00FF66] text-[10px] hover:border-[#00FF66] transition-colors">←</button>
+            )}
+            {currentIndex < STATUS_ORDER.length - 1 && (
+              <button onClick={() => onUpdateStatus(subtask.id, STATUS_ORDER[currentIndex + 1])}
+                className="h-6 px-1.5 border border-[#262626] text-[#00FF66] text-[10px] hover:border-[#00FF66] transition-colors">→</button>
+            )}
+            <button onClick={() => setShowComments(!showComments)}
+              className="h-6 px-1.5 border border-[#262626] text-[#00FF66]/50 text-[10px] hover:border-[#00FF66] transition-colors">
+              [{subtask.comments.length}]
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {showComments && (
+        <div className="mt-3 border-t border-[#262626] pt-3 space-y-2">
+          {subtask.comments.length === 0 && (
+            <div className="text-[#00FF66]/50 text-xs">NO_COMMENTS</div>
+          )}
+          {subtask.comments.map((c) => (
+            <div key={c.id} className="border border-[#262626] bg-black p-2">
+              <div className="text-[#00FF66] text-[10px] font-bold">{c.authorName}</div>
+              <div className="text-white text-xs mt-1">{c.content}</div>
+            </div>
+          ))}
+          <div className="flex gap-2">
+            <textarea value={newComment} onChange={(e) => setNewComment(e.target.value)}
+              placeholder="Comentário..."
+              rows={2}
+              className="flex-1 px-2 py-1 bg-black border border-[#262626] text-white text-xs focus:border-[#00FF66] focus:outline-none resize-none" />
+            <button onClick={handleAddComment} disabled={!newComment.trim()}
+              className="px-2 border border-[#00FF66] text-[#00FF66] text-[10px] hover:bg-[#00FF66] hover:text-black transition-colors disabled:opacity-50">
+              [ OK ]
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ==================== TASK EDIT MODAL ====================
 function TaskEditModal({
   task,
@@ -770,6 +919,7 @@ function TaskEditModal({
   onClose,
   onSave,
   onAddComment,
+  onEditComment,
 }: {
   task: Task
   team: TeamMember[]
@@ -777,12 +927,29 @@ function TaskEditModal({
   onClose: () => void
   onSave: (updates: Partial<Task>) => void
   onAddComment: (content: string, mentions: string[]) => void
+  onEditComment?: (commentId: string, content: string) => void
 }) {
   const [title, setTitle] = useState(task.title)
   const [description, setDescription] = useState(task.description)
   const [assignees, setAssignees] = useState<string[]>(task.assignees)
   const [labels, setLabels] = useState<Label[]>(task.labels)
+  const [subtasks, setSubtasks] = useState<Subtask[]>([])
   const [newComment, setNewComment] = useState("")
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
+  const [editingCommentContent, setEditingCommentContent] = useState("")
+  const [showNewSubtask, setShowNewSubtask] = useState(false)
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState("")
+  const [newSubtaskEstHours, setNewSubtaskEstHours] = useState("")
+
+  useEffect(() => {
+    fetch(`/api/subtasks?taskId=${task.id}`)
+      .then((r) => r.json())
+      .then((d) => setSubtasks(d.subtasks || []))
+      .catch(() => {})
+  }, [task.id])
+
+  const totalEstimatedHours = subtasks.reduce((s, st) => s + (st.estimatedHours || 0), 0)
+  const totalTimeSpent = subtasks.reduce((s, st) => s + st.timeSpent, 0)
 
   const handleSave = () => {
     onSave({
@@ -804,12 +971,85 @@ function TaskEditModal({
     }
   }
 
+  const handleEditComment = (commentId: string) => {
+    if (editingCommentContent.trim()) {
+      onEditComment?.(commentId, editingCommentContent.trim())
+      setEditingCommentId(null)
+      setEditingCommentContent("")
+    }
+  }
+
   const toggleAssignee = (name: string) => {
     if (assignees.includes(name)) {
       setAssignees(assignees.filter((a) => a !== name))
     } else {
       setAssignees([...assignees, name])
     }
+  }
+
+  const handleAddSubtask = async () => {
+    if (!newSubtaskTitle.trim()) return
+    try {
+      await fetch("/api/subtasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          taskId: task.id,
+          title: newSubtaskTitle.trim(),
+          estimatedHours: parseFloat(newSubtaskEstHours) || 0,
+          position: subtasks.length,
+        }),
+      })
+      setNewSubtaskTitle("")
+      setNewSubtaskEstHours("")
+      setShowNewSubtask(false)
+      const res = await fetch(`/api/subtasks?taskId=${task.id}`)
+      const d = await res.json()
+      setSubtasks(d.subtasks || [])
+    } catch (err) {
+      console.error("Error creating subtask:", err)
+    }
+  }
+
+  const handleSubtaskStatusUpdate = async (subtaskId: string, newStatus: string) => {
+    try {
+      await fetch("/api/timer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subtaskId, newStatus }),
+      })
+      const res = await fetch(`/api/subtasks?taskId=${task.id}`)
+      const d = await res.json()
+      setSubtasks(d.subtasks || [])
+    } catch (err) {
+      console.error("Error updating subtask status:", err)
+    }
+  }
+
+  const handleSubtaskComment = async (subtaskId: string, content: string) => {
+    try {
+      await fetch("/api/comments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          taskId: task.id,
+          subtaskId,
+          authorUsername: currentUser.username,
+          content,
+        }),
+      })
+      const res = await fetch(`/api/subtasks?taskId=${task.id}`)
+      const d = await res.json()
+      setSubtasks(d.subtasks || [])
+    } catch (err) {
+      console.error("Error adding subtask comment:", err)
+    }
+  }
+
+  const formatTime = (seconds: number) => {
+    const h = Math.floor(seconds / 3600)
+    const m = Math.floor((seconds % 3600) / 60)
+    return `${h}h ${m}m`
   }
 
   return (
@@ -881,6 +1121,69 @@ function TaskEditModal({
             />
 
             <div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-[#00FF66] text-xs">{">"} SUBTASKS:</div>
+                <div className="text-[#00FF66]/50 text-[10px]">
+                  EST: {totalEstimatedHours}h | REAL: {formatTime(totalTimeSpent)}
+                </div>
+              </div>
+
+              {totalEstimatedHours > 0 && (
+                <div className="mb-3">
+                  <div className="flex justify-between text-[10px] text-[#00FF66]/50 mb-1">
+                    <span>Total Estimado: {totalEstimatedHours}h</span>
+                    <span>Total Real: {formatTime(totalTimeSpent)}</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-[#262626]">
+                    <div
+                      className="h-full bg-[#00FF66] transition-all"
+                      style={{ width: `${Math.min((totalTimeSpent / (totalEstimatedHours * 3600)) * 100, 100)}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2 mb-3">
+                {subtasks.length === 0 && (
+                  <div className="text-[#00FF66]/50 text-xs">NO_SUBTASKS</div>
+                )}
+                {subtasks.map((st) => (
+                  <SubtaskRow
+                    key={st.id}
+                    subtask={st}
+                    onUpdateStatus={handleSubtaskStatusUpdate}
+                    onAddComment={handleSubtaskComment}
+                    currentUser={currentUser}
+                    team={team}
+                  />
+                ))}
+              </div>
+
+              {showNewSubtask ? (
+                <div className="border border-[#00FF66] p-3 space-y-2">
+                  <input value={newSubtaskTitle} onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                    placeholder="SUBTASK_TITLE..."
+                    className="w-full h-10 px-3 bg-[#1A1A1A] border border-[#262626] text-white text-sm placeholder:text-[#00FF66]/30 focus:border-[#00FF66] focus:outline-none" />
+                  <input value={newSubtaskEstHours} onChange={(e) => setNewSubtaskEstHours(e.target.value)}
+                    placeholder="ESTIMATED_HOURS (ex: 2.5)"
+                    type="number" step="0.5" min="0"
+                    className="w-full h-10 px-3 bg-[#1A1A1A] border border-[#262626] text-white text-sm placeholder:text-[#00FF66]/30 focus:border-[#00FF66] focus:outline-none" />
+                  <div className="flex gap-2">
+                    <button onClick={handleAddSubtask} disabled={!newSubtaskTitle.trim()}
+                      className="flex-1 h-10 border border-[#00FF66] text-[#00FF66] text-xs hover:bg-[#00FF66] hover:text-black transition-colors disabled:opacity-50">[ ADD ]</button>
+                    <button onClick={() => setShowNewSubtask(false)}
+                      className="h-10 px-3 border border-[#262626] text-[#00FF66]/50 text-xs hover:border-[#00FF66] transition-colors">[ CANCEL ]</button>
+                  </div>
+                </div>
+              ) : (
+                <button onClick={() => setShowNewSubtask(true)}
+                  className="w-full h-10 border border-dashed border-[#262626] text-[#00FF66]/50 text-xs hover:border-[#00FF66] hover:text-[#00FF66] transition-colors">
+                  [ + ADD_SUBTASK ]
+                </button>
+              )}
+            </div>
+
+            <div>
               <div className="text-[#00FF66] text-xs mb-2">{">"} FILES:</div>
               <div className="space-y-2 mb-3">
                 {task.files.length === 0 ? (
@@ -891,14 +1194,8 @@ function TaskEditModal({
                       key={file.id}
                       className="flex items-center justify-between border border-[#262626] bg-[#1A1A1A] p-2"
                     >
-                      <a
-                        href={file.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[#00FF66] text-xs hover:underline truncate flex-1"
-                      >
-                        {file.name}
-                      </a>
+                      <a href={file.url} target="_blank" rel="noopener noreferrer"
+                        className="text-[#00FF66] text-xs hover:underline truncate flex-1">{file.name}</a>
                       <span className="text-[#00FF66]/50 text-xs ml-2 shrink-0">
                         {(file.size / 1024).toFixed(1)} KB
                       </span>
@@ -908,9 +1205,7 @@ function TaskEditModal({
               </div>
               <label className="flex items-center gap-2 cursor-pointer border border-dashed border-[#262626] hover:border-[#00FF66] p-3 transition-colors">
                 <span className="text-[#00FF66] text-xs">[ UPLOAD_FILE ]</span>
-                <input
-                  type="file"
-                  className="hidden"
+                <input type="file" className="hidden"
                   onChange={async (e) => {
                     const file = e.target.files?.[0]
                     if (!file) return
@@ -918,18 +1213,10 @@ function TaskEditModal({
                     formData.append("file", file)
                     formData.append("taskId", task.id)
                     try {
-                      const res = await fetch("/api/upload", {
-                        method: "POST",
-                        body: formData,
-                      })
-                      if (res.ok) {
-                        window.location.reload()
-                      }
-                    } catch (err) {
-                      console.error("Upload failed:", err)
-                    }
-                  }}
-                />
+                      const res = await fetch("/api/upload", { method: "POST", body: formData })
+                      if (res.ok) window.location.reload()
+                    } catch (err) { console.error("Upload failed:", err) }
+                  }} />
               </label>
             </div>
 
@@ -940,34 +1227,43 @@ function TaskEditModal({
                   <div className="text-[#00FF66]/50 text-xs">NO_COMMENTS</div>
                 ) : (
                   task.comments.map((comment) => (
-                    <div
-                      key={comment.id}
-                      className="border border-[#262626] bg-[#1A1A1A] p-3"
-                    >
+                    <div key={comment.id} className="border border-[#262626] bg-[#1A1A1A] p-3">
                       <div className="flex items-center gap-2 mb-2">
-                          <span className="text-[#00FF66] text-xs font-bold">
-                            {comment.authorName}
-                          </span>
-                          <span className="text-[#00FF66]/50 text-xs">
-                            {new Date(comment.createdAt).toLocaleString("pt-BR")}
-                          </span>
-                        </div>
-                      <div className="text-white text-sm break-words">
-                        {comment.content}
+                        <span className="text-[#00FF66] text-xs font-bold">{comment.authorName}</span>
+                        <span className="text-[#00FF66]/50 text-xs">
+                          {new Date(comment.createdAt).toLocaleString("pt-BR")}
+                        </span>
+                        {comment.authorName === currentUser.username && (
+                          <button onClick={() => {
+                            if (editingCommentId === comment.id) { setEditingCommentId(null) }
+                            else { setEditingCommentId(comment.id); setEditingCommentContent(comment.content) }
+                          }}
+                            className="ml-auto text-[#00FF66]/50 hover:text-[#00FF66] text-xs px-1 border border-[#262626] hover:border-[#00FF66] transition-colors">[ EDIT ]</button>
+                        )}
                       </div>
+                      {editingCommentId === comment.id ? (
+                        <div className="space-y-2">
+                          <textarea value={editingCommentContent} onChange={(e) => setEditingCommentContent(e.target.value)}
+                            rows={3}
+                            className="w-full px-3 py-2 bg-black border border-[#00FF66] text-white text-sm focus:outline-none resize-none" />
+                          <div className="flex gap-2">
+                            <button onClick={() => handleEditComment(comment.id)} disabled={!editingCommentContent.trim()}
+                              className="flex-1 h-8 border border-[#00FF66] text-[#00FF66] text-xs hover:bg-[#00FF66] hover:text-black transition-colors disabled:opacity-50">[ SAVE_EDIT ]</button>
+                            <button onClick={() => setEditingCommentId(null)}
+                              className="h-8 px-3 border border-[#262626] text-[#00FF66]/50 text-xs hover:border-[#00FF66] transition-colors">[ CANCEL ]</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-white text-sm break-words">{comment.content}</div>
+                      )}
                     </div>
                   ))
                 )}
               </div>
 
               <div className="text-[#00FF66] text-xs mb-2">{">"} NEW_COMMENT (use @ para mencionar):</div>
-              <MentionInput
-                value={newComment}
-                onChange={setNewComment}
-                onSubmit={handleAddComment}
-                team={team}
-                placeholder="Digite seu comentário..."
-              />
+              <MentionInput value={newComment} onChange={setNewComment}
+                onSubmit={handleAddComment} team={team} placeholder="Digite seu comentário..." />
             </div>
 
             <div className="text-[#00FF66]/50 text-xs">
@@ -1039,6 +1335,17 @@ function TaskCard({
       {task.files && task.files.length > 0 && (
         <div className="text-[#00FF66]/50 text-xs mb-3">
           [ {task.files.length} FILE{task.files.length > 1 ? "S" : ""} ]
+        </div>
+      )}
+      {task.subtaskCount !== undefined && task.subtaskCount > 0 && (
+        <div className="text-[#00FF66]/50 text-xs mb-3">
+          [ {task.subtaskCount} SUBTASK{(task.subtaskCount || 0) > 1 ? "S" : ""} ]
+          {(task.totalEstimatedHours || 0) > 0 && (
+            <> | EST: {task.totalEstimatedHours}h</>
+          )}
+          {(task.totalTimeSpent || 0) > 0 && (
+            <> | REAL: {Math.floor((task.totalTimeSpent || 0) / 3600)}h {Math.floor(((task.totalTimeSpent || 0) % 3600) / 60)}m</>
+          )}
         </div>
       )}
 
@@ -1430,6 +1737,7 @@ function KanbanBoard({
   onDeleteTask: (taskId: string) => void
   onMoveTask: (taskId: string, fromColumnId: string, toColumnId: string, newPosition?: number) => void
   onAddComment: (taskId: string, content: string, mentions: string[]) => void
+  onEditComment: (taskId: string, commentId: string, content: string) => void
   onMarkNotificationRead: (id: string) => void
   onClearAllNotifications: () => void
   refreshData: () => void
@@ -1514,6 +1822,9 @@ function KanbanBoard({
           }}
           onAddComment={(content, mentions) => {
             onAddComment(editingTask.task.id, content, mentions)
+          }}
+          onEditComment={(commentId, content) => {
+            onEditComment(editingTask.task.id, commentId, content)
           }}
         />
       )}
@@ -1862,6 +2173,20 @@ export default function BroLabTask() {
     }
   }
 
+  // Edit comment
+  const handleEditComment = async (taskId: string, commentId: string, content: string) => {
+    try {
+      await fetch("/api/comments", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: commentId, content }),
+      })
+      await fetchData()
+    } catch (error) {
+      console.error("Error editing comment:", error)
+    }
+  }
+
   // Mark notification as read
   const handleMarkNotificationRead = async (id: string) => {
     try {
@@ -1914,6 +2239,7 @@ export default function BroLabTask() {
       onDeleteTask={handleDeleteTask}
       onMoveTask={handleMoveTask}
       onAddComment={handleAddComment}
+      onEditComment={handleEditComment}
       onMarkNotificationRead={handleMarkNotificationRead}
       onClearAllNotifications={handleClearAllNotifications}
       refreshData={fetchData}
