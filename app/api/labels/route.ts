@@ -1,27 +1,27 @@
+import { createAdminClient } from "@/lib/supabase/admin"
+import { createClient } from "@/lib/supabase/server"
 import { NextRequest, NextResponse } from "next/server"
-
-const LABEL_COLORS = [
-  "#FFFFFF",
-  "#6B7280",
-  "#84CC16",
-  "#A3E635",
-  "#F97316",
-  "#EF4444",
-  "#22C55E",
-]
-
-function getLabelColor(name: string): string {
-  let hash = 0
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash)
-  }
-  return LABEL_COLORS[Math.abs(hash) % LABEL_COLORS.length]
-}
 
 export async function GET() {
   try {
-    return NextResponse.json({ labels: [] })
-  } catch {
+    const supabase = createAdminClient() ?? (await createClient())
+
+    const { data: labels, error } = await supabase
+      .from("labels")
+      .select("*")
+      .order("name", { ascending: true })
+
+    if (error) throw error
+
+    return NextResponse.json({
+      labels: (labels || []).map((l) => ({
+        id: l.name,
+        name: l.name,
+        color: l.color,
+      })),
+    })
+  } catch (err) {
+    console.error("Error fetching labels:", err)
     return NextResponse.json(
       { error: "ERRO: FALHA_AO_BUSCAR_ETIQUETAS" },
       { status: 500 },
@@ -31,14 +31,38 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { name } = await request.json()
-    const label = {
-      id: name.toUpperCase(),
-      name: name.toUpperCase(),
-      color: getLabelColor(name.toUpperCase()),
+    const { name, color } = await request.json()
+    const supabase = createAdminClient()
+
+    if (!supabase) {
+      return NextResponse.json(
+        { error: "ERRO: SUPABASE_SERVICE_ROLE_KEY_NAO_CONFIGURADA" },
+        { status: 500 },
+      )
     }
-    return NextResponse.json({ label })
-  } catch {
+
+    const labelName = name.toUpperCase()
+
+    const { data, error } = await supabase
+      .from("labels")
+      .insert({
+        name: labelName,
+        color: color || "#6B7280",
+      })
+      .select()
+      .single()
+
+    if (error) throw error
+
+    return NextResponse.json({
+      label: {
+        id: data.name,
+        name: data.name,
+        color: data.color,
+      },
+    })
+  } catch (err) {
+    console.error("Error creating label:", err)
     return NextResponse.json(
       { error: "ERRO: FALHA_AO_CRIAR_ETIQUETA" },
       { status: 500 },
@@ -46,6 +70,32 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function DELETE() {
-  return NextResponse.json({ success: true })
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const id = searchParams.get("id")
+
+    if (!id) {
+      return NextResponse.json({ error: "ID obrigatório" }, { status: 400 })
+    }
+
+    const supabase = createAdminClient()
+    if (!supabase) {
+      return NextResponse.json(
+        { error: "ERRO: SUPABASE_SERVICE_ROLE_KEY_NAO_CONFIGURADA" },
+        { status: 500 },
+      )
+    }
+
+    const { error } = await supabase.from("labels").delete().eq("name", id)
+    if (error) throw error
+
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    console.error("Error deleting label:", err)
+    return NextResponse.json(
+      { error: "ERRO: FALHA_AO_DELETAR_ETIQUETA" },
+      { status: 500 },
+    )
+  }
 }

@@ -26,18 +26,32 @@ export async function GET(request: NextRequest) {
 
     const subtaskIds = (subtasks || []).map((s) => s.id)
     let commentsBySubtaskId: Record<string, unknown[]> = {}
+    let filesBySubtaskId: Record<string, unknown[]> = {}
 
     if (subtaskIds.length > 0) {
-      const { data: comments, error: commentsError } = await supabase
-        .from("task_comments")
-        .select("*")
-        .in("subtask_id", subtaskIds)
-        .order("created_at", { ascending: true })
+      const [{ data: comments }, { data: files }] = await Promise.all([
+        supabase
+          .from("task_comments")
+          .select("*")
+          .in("subtask_id", subtaskIds)
+          .order("created_at", { ascending: true }),
+        supabase
+          .from("task_files")
+          .select("*")
+          .in("subtask_id", subtaskIds)
+          .order("created_at", { ascending: true }),
+      ])
 
-      if (!commentsError && comments) {
+      if (comments) {
         for (const c of comments) {
           if (!commentsBySubtaskId[c.subtask_id]) commentsBySubtaskId[c.subtask_id] = []
           commentsBySubtaskId[c.subtask_id].push(c)
+        }
+      }
+      if (files) {
+        for (const f of files) {
+          if (!filesBySubtaskId[f.subtask_id]) filesBySubtaskId[f.subtask_id] = []
+          filesBySubtaskId[f.subtask_id].push(f)
         }
       }
     }
@@ -68,6 +82,14 @@ export async function GET(request: NextRequest) {
           authorId: c.author_username,
           authorName: c.author_username,
           subtaskId: s.id,
+        })),
+        files: (filesBySubtaskId[s.id] || []).map((f: Record<string, unknown>) => ({
+          id: f.id,
+          name: f.name,
+          size: f.size,
+          type: f.type,
+          url: supabase.storage.from('task-files').getPublicUrl(f.path as string).data?.publicUrl || '',
+          createdAt: f.created_at,
         })),
         createdAt: s.created_at,
       }

@@ -1,6 +1,7 @@
 # Dicionário de Dados — BrolabTask
 
 > Gerado pelo Archaeologist em: 2026-05-29 | doc_level: detalhado
+> Atualizado em: 2026-05-30 — novas tabelas: subtasks, columns, labels; password → bcrypt
 
 ---
 
@@ -12,20 +13,18 @@
 
 Usuários do sistema. Autenticação customizada — não usa Supabase Auth.
 
-| Campo | Tipo DB | Tipo TS | Nullable | Constraints | Descrição |
-|-------|---------|---------|----------|-------------|-----------|
-| `id` | `UUID` | `string` | NOT NULL | PK, DEFAULT gen_random_uuid() | Identificador único do membro |
-| `email` | `TEXT` | `string` | NOT NULL | UNIQUE (inferido) | E-mail de login. Normalizado para lowercase |
-| `username` | `TEXT` | `string` | NOT NULL | UNIQUE (inferido) | @handle. Sempre prefixado com `@`. Ex: `@joao.silva` |
-| `name` | `TEXT` | `string` | NOT NULL | — | Nome em UPPER_SNAKE_CASE. Ex: `JOAO_SILVA` |
-| `password` | `TEXT` | `string` | NOT NULL | — | 🔴 Senha em PLAINTEXT. Nunca hasheada |
-| `role` | `TEXT` | `string` | NOT NULL | — | Role em UPPER_SNAKE_CASE. Ex: `ADMIN`, `COLLABORATOR`, `ADMIN_TOTAL` |
-| `role_id` | `TEXT` | `string \| undefined` | NULL | — | Identificador de papel customizado (uso não confirmado) |
-| `created_at` | `TIMESTAMPTZ` | `string` | NOT NULL | DEFAULT now() | Timestamp de criação |
+| Campo | Tipo DB | Nullable | Constraints | Descrição |
+|-------|---------|----------|-------------|-----------|
+| `id` | `UUID` | NOT NULL | PK, DEFAULT gen_random_uuid() | Identificador único |
+| `email` | `TEXT` | NOT NULL | UNIQUE | E-mail de login. Normalizado para lowercase |
+| `username` | `TEXT` | NOT NULL | UNIQUE | @handle. Sempre prefixado com `@` |
+| `name` | `TEXT` | NOT NULL | — | Nome em UPPER_SNAKE_CASE |
+| `password` | `TEXT` | NOT NULL | — | ✅ **HASH bcrypt** (desde migration 2026-05-30) |
+| `role` | `TEXT` | NOT NULL | — | `ADMIN_TOTAL`, `ADMIN`, `COLLABORATOR` |
+| `role_id` | `TEXT` | NULL | — | Sem uso confirmado |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL | DEFAULT now() | Timestamp de criação |
 
-**Roles conhecidos:** `ADMIN_TOTAL`, `ADMIN`, `COLLABORATOR`
-
-**isAdmin:** Calculado no momento do login (`role === "ADMIN_TOTAL" || role === "ADMIN"`) — não é uma coluna.
+**isAdmin:** Calculado (`role === "ADMIN_TOTAL" || role === "ADMIN"`)
 
 ---
 
@@ -33,261 +32,158 @@ Usuários do sistema. Autenticação customizada — não usa Supabase Auth.
 
 Tarefas do Kanban. Coluna é representada pelo campo `status`.
 
-| Campo | Tipo DB | Tipo TS | Nullable | Constraints | Descrição |
-|-------|---------|---------|----------|-------------|-----------|
-| `id` | `UUID` | `string` | NOT NULL | PK, DEFAULT gen_random_uuid() | Identificador único da tarefa |
-| `title` | `TEXT` | `string` | NOT NULL | — | Título da tarefa |
-| `description` | `TEXT` | `string` | NULL | DEFAULT '' | Descrição. Pode ser vazio |
-| `status` | `TEXT` | `string` | NOT NULL | — | Coluna atual. Mapeado para `columnId` na API. Ex: `BACKLOG`, `FAZENDO` |
-| `position` | `INTEGER` | `number` | NOT NULL | DEFAULT 0 | Ordem da tarefa dentro da coluna. Usado para ordenação ASC |
-| `assignees` | `TEXT[]` | `string[]` | NOT NULL | DEFAULT '{}' | Array de nomes de membros atribuídos. Armazena `member.name` (não ID) |
-| `labels` | `TEXT[]` | `string[]` | NOT NULL | DEFAULT '{}' | Array de nomes de labels. **Não há tabela de labels** |
-| `created_at` | `TIMESTAMPTZ` | `string` | NOT NULL | DEFAULT now() | Timestamp de criação |
+| Campo | Tipo DB | Nullable | Constraints | Descrição |
+|-------|---------|----------|-------------|-----------|
+| `id` | `UUID` | NOT NULL | PK | Identificador único |
+| `title` | `TEXT` | NOT NULL | — | Título da tarefa |
+| `description` | `TEXT` | NULL | DEFAULT '' | Descrição |
+| `status` | `TEXT` | NOT NULL | — | Coluna atual (BACKLOG, FAZENDO, etc) |
+| `position` | `INTEGER` | NOT NULL | DEFAULT 0 | Ordem dentro da coluna |
+| `assignees` | `TEXT[]` | NOT NULL | DEFAULT '{}' | Nomes dos membros |
+| `labels` | `TEXT[]` | NOT NULL | DEFAULT '{}' | Formato `nome||cor` desde 2026-05-30 |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL | DEFAULT now() | |
 
-**Nota sobre `assignees`:** Armazena o campo `name` do membro (em UPPER_SNAKE), não o `id`. Sem integridade referencial.
+---
 
-**Nota sobre `labels`:** Cada string é o nome da label. A cor é calculada dinamicamente por `getLabelColor(name)`. Sem tabela `labels`.
+### `subtasks` [NOVO]
+
+Subtarefas com controle de horas estimadas e cronômetro.
+
+| Campo | Tipo DB | Nullable | Constraints | Descrição |
+|-------|---------|----------|-------------|-----------|
+| `id` | `UUID` | NOT NULL | PK | Identificador único |
+| `task_id` | `UUID` | NOT NULL | FK → tasks.id ON DELETE CASCADE | Tarefa pai |
+| `title` | `TEXT` | NOT NULL | — | Título |
+| `description` | `TEXT` | NULL | DEFAULT '' | Descrição |
+| `estimated_hours` | `DOUBLE PRECISION` | NULL | DEFAULT 0 | Horas estimadas |
+| `time_spent` | `DOUBLE PRECISION` | NULL | DEFAULT 0 | Segundos acumulados de cronômetro |
+| `status` | `TEXT` | NOT NULL | DEFAULT 'BACKLOG' | BACKLOG → FAZENDO → ALTERAÇÕES → APROVADO → FEITO |
+| `position` | `INTEGER` | NOT NULL | DEFAULT 0 | Ordem |
+| `assignees` | `TEXT[]` | NULL | DEFAULT '{}' | Responsáveis |
+| `timer_started_at` | `TIMESTAMPTZ` | NULL | — | Início do cronômetro (null = parado) |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL | DEFAULT now() | |
+
+**Regras do cronômetro:**
+- Inicia automaticamente ao mudar de BACKLOG para outro status
+- Para/contabiliza ao chegar em APROVADO (status 3)
+- Tempo vivo calculado na API: `time_spent + (now - timer_started_at)` se timer rodando
 
 ---
 
 ### `task_comments`
 
-Comentários em tarefas. Suporta @menções que geram notificações.
-
-| Campo | Tipo DB | Tipo TS | Nullable | Constraints | Descrição |
-|-------|---------|---------|----------|-------------|-----------|
-| `id` | `UUID` | `string` | NOT NULL | PK, DEFAULT gen_random_uuid() | Identificador único do comentário |
-| `task_id` | `UUID` | `string` | NOT NULL | FK → `tasks.id` ON DELETE CASCADE | Tarefa à qual o comentário pertence |
-| `author_id` | `UUID` | `string \| null` | NULL | FK → `team_members.id` (inferido) | ID do autor. Pode ser null |
-| `author_name` | `TEXT` | `string` | NULL | — | Nome de exibição do autor |
-| `author_username` | `TEXT` | `string` | NULL | — | Username do autor (sem @) |
-| `content` | `TEXT` | `string` | NOT NULL | — | Conteúdo do comentário. Pode conter `@username` para menções |
-| `created_at` | `TIMESTAMPTZ` | `string` | NOT NULL | DEFAULT now() | Timestamp de criação |
-
-**Frontend TS Interface (projetada):**
-```typescript
-interface Comment {
-  id: string
-  authorId: string
-  authorName: string
-  content: string
-  createdAt: string
-}
-```
+| Campo | Tipo DB | Nullable | Constraints | Descrição |
+|-------|---------|----------|-------------|-----------|
+| `id` | `UUID` | NOT NULL | PK | Identificador único |
+| `task_id` | `UUID` | NOT NULL | FK → tasks.id | Tarefa principal |
+| `subtask_id` | `UUID` | NULL | FK → subtasks.id ON DELETE CASCADE | [NOVO] Subtarefa (opcional) |
+| `author_username` | `TEXT` | NULL | — | Username do autor |
+| `content` | `TEXT` | NOT NULL | — | Conteúdo |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL | DEFAULT now() | |
 
 ---
 
 ### `task_files`
 
-Metadados dos arquivos anexados a tarefas. O arquivo físico fica no Supabase Storage.
-
-| Campo | Tipo DB | Tipo TS | Nullable | Constraints | Descrição |
-|-------|---------|---------|----------|-------------|-----------|
-| `id` | `UUID` | `string` | NOT NULL | PK, DEFAULT gen_random_uuid() | Identificador único do arquivo |
-| `task_id` | `UUID` | `string` | NOT NULL | FK → `tasks.id` ON DELETE CASCADE | Tarefa à qual o arquivo pertence |
-| `name` | `TEXT` | `string` | NOT NULL | — | Nome original do arquivo |
-| `size` | `BIGINT` | `number` | NOT NULL | — | Tamanho em bytes |
-| `type` | `TEXT` | `string` | NOT NULL | — | MIME type do arquivo. Ex: `image/png` |
-| `path` | `TEXT` | `string` | NOT NULL | — | Caminho no bucket: `{taskId}/{uuid}.{ext}` |
-| `created_at` | `TIMESTAMPTZ` | `string` | NOT NULL | DEFAULT now() | Timestamp de upload |
-
-**Index:** `idx_task_files_task_id ON task_files(task_id)` (da migration 001)
-
-**Frontend TS Interface:**
-```typescript
-interface TaskFile {
-  id: string
-  name: string
-  size: number
-  type: string
-  url: string  // publicUrl gerada em runtime, não armazenada
-}
-```
+| Campo | Tipo DB | Nullable | Constraints | Descrição |
+|-------|---------|----------|-------------|-----------|
+| `id` | `UUID` | NOT NULL | PK | |
+| `task_id` | `UUID` | NOT NULL | FK → tasks.id ON DELETE CASCADE | |
+| `name` | `TEXT` | NOT NULL | — | Nome original |
+| `size` | `BIGINT` | NOT NULL | — | Bytes |
+| `type` | `TEXT` | NOT NULL | — | MIME type |
+| `path` | `TEXT` | NOT NULL | — | `{taskId}/{uuid}.{ext}` |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL | DEFAULT now() | |
 
 ---
 
 ### `notifications`
 
-Notificações de @menção em comentários. Recebidas em tempo real via Supabase Realtime.
-
-| Campo | Tipo DB | Tipo TS | Nullable | Constraints | Descrição |
-|-------|---------|---------|----------|-------------|-----------|
-| `id` | `UUID` | `string` | NOT NULL | PK, DEFAULT gen_random_uuid() | Identificador único da notificação |
-| `user_id` | `UUID` | `string` | NOT NULL | FK → `team_members.id` (inferido) | Usuário destinatário da notificação |
-| `type` | `TEXT` | `string` | NOT NULL | — | Tipo. Valor conhecido: `'mention'` |
-| `message` | `TEXT` | `string` | NOT NULL | — | Texto da notificação. Ex: `"@joao mencionou você na tarefa 'Fix bug'"` |
-| `task_id` | `UUID` | `string` | NULL | FK → `tasks.id` (inferido) | Tarefa relacionada |
-| `task_title` | `TEXT` | `string` | NULL | — | Título da tarefa (desnormalizado para performance) |
-| `from_user` | `TEXT` | `string` | NULL | — | Username de quem gerou a notificação |
-| `read` | `BOOLEAN` | `boolean` | NOT NULL | DEFAULT false | Se o usuário já leu a notificação |
-| `created_at` | `TIMESTAMPTZ` | `string` | NOT NULL | DEFAULT now() | Timestamp de criação |
-
-**Frontend TS Interface:**
-```typescript
-interface Notification {
-  id: string
-  type: string
-  message: string
-  taskId: string
-  taskTitle: string
-  fromUser: string
-  createdAt: string
-  read: boolean
-}
-```
-
-**Mapeamento de campos (API → Frontend):**
-```
-n.id           → id
-n.type         → type
-n.message      → message
-n.task_id      → taskId
-n.task_title   → taskTitle
-n.from_user    → fromUser
-n.created_at   → createdAt
-n.read         → read
-```
+| Campo | Tipo DB | Nullable | Constraints | Descrição |
+|-------|---------|----------|-------------|-----------|
+| `id` | `UUID` | NOT NULL | PK | |
+| `user_id` | `UUID` | NOT NULL | FK → team_members.id | Destinatário |
+| `type` | `TEXT` | NOT NULL | — | mention, task_created, task_updated, task_deleted |
+| `message` | `TEXT` | NOT NULL | — | Texto |
+| `task_id` | `UUID` | NULL | — | Task relacionada |
+| `task_title` | `TEXT` | NULL | — | Título desnormalizado |
+| `from_user` | `TEXT` | NULL | — | Quem gerou |
+| `read` | `BOOLEAN` | NOT NULL | DEFAULT false | |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL | DEFAULT now() | |
 
 ---
 
-## Entidades de Storage (Supabase Storage)
+### `columns` [NOVO]
+
+| Campo | Tipo DB | Nullable | Constraints | Descrição |
+|-------|---------|----------|-------------|-----------|
+| `id` | `UUID` | NOT NULL | PK | |
+| `name` | `TEXT` | NOT NULL | UNIQUE | Nome (BACKLOG, FAZENDO, etc) |
+| `position` | `INTEGER` | NOT NULL | DEFAULT 0 | Ordem |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL | DEFAULT now() | |
+
+**Seed:** BACKLOG(0), FAZENDO(1), ALTERAÇÕES(2), APROVADO(3), FEITO(4)
+
+---
+
+### `labels` [NOVO]
+
+| Campo | Tipo DB | Nullable | Constraints | Descrição |
+|-------|---------|----------|-------------|-----------|
+| `id` | `UUID` | NOT NULL | PK | |
+| `name` | `TEXT` | NOT NULL | UNIQUE | Nome UPPERCASE |
+| `color` | `TEXT` | NOT NULL | DEFAULT '#6B7280' | HEX da cor |
+| `created_at` | `TIMESTAMPTZ` | NOT NULL | DEFAULT now() | |
+
+---
+
+## Entidades de Storage
 
 ### Bucket: `task-files`
 
-| Propriedade | Valor |
-|-------------|-------|
-| Nome | `task-files` |
-| Público | `true` (URLs públicas acessíveis sem autenticação) |
-| Criação | Automática no primeiro upload (POST `/api/upload`) |
-
-**Estrutura de path:**
-```
-task-files/
-  {task_id}/
-    {uuid}.{ext}      ← ex: "abc123.pdf", "def456.png"
-```
+Público. Path: `{task_id}/{uuid}.{ext}`.
 
 ---
 
-## Entidades de Frontend (TypeScript Interfaces)
+## Entidades de Frontend (TypeScript)
 
-Definidas em `app/page.tsx`.
-
-### `Label`
+### `Subtask` [NOVO]
 ```typescript
-interface Label {
-  id: string       // temporário: Date.now().toString() na criação local, ou name na API
-  name: string     // UPPERCASE. Ex: "BUG", "FEATURE"
-  color: string    // HEX calculado por getLabelColor(name)
+interface Subtask {
+  id: string; taskId: string; title: string; description: string;
+  estimatedHours: number; timeSpent: number; status: string;
+  position: number; assignees: string[]; comments: Comment[];
+  timerStartedAt: string | null; createdAt: string;
 }
 ```
 
-### `Comment`
-```typescript
-interface Comment {
-  id: string
-  authorId: string
-  authorName: string
-  content: string
-  createdAt: string
-}
-```
-
-### `TaskFile`
-```typescript
-interface TaskFile {
-  id: string
-  name: string
-  size: number
-  type: string
-  url: string      // URL pública do Supabase Storage (não persistida no DB)
-}
-```
-
-### `Task`
+### `Task` (atualizado)
 ```typescript
 interface Task {
-  id: string
-  title: string
-  description: string
-  columnId: string  // = tasks.status no banco
-  position: number
-  assignees: string[]  // nomes dos membros (tasks.assignees no banco)
-  labels: Label[]      // projetado de tasks.labels TEXT[]
-  comments: Comment[]  // de task_comments
-  files: TaskFile[]    // de task_files
-  createdAt: string
+  // ... campos existentes
+  subtaskCount?: number;
+  totalEstimatedHours?: number;
+  totalTimeSpent?: number;
 }
 ```
 
-### `Column`
+### `Comment` (atualizado)
 ```typescript
-interface Column {
-  id: string     // = nome da coluna (hardcoded)
-  name: string   // ex: "BACKLOG"
-  tasks: Task[]  // associados por client-side filter
-}
-```
-
-### `TeamMember`
-```typescript
-interface TeamMember {
-  id: string
-  name: string      // UPPER_SNAKE_CASE
-  username: string  // lowercase, sem @
-  email: string     // lowercase
-  role: string      // UPPER_SNAKE_CASE
-  isAdmin: boolean  // calculado (não campo de banco)
-}
-```
-
-### `Notification`
-```typescript
-interface Notification {
-  id: string
-  type: string
-  message: string
-  taskId: string
-  taskTitle: string
-  fromUser: string
-  createdAt: string
-  read: boolean
+interface Comment {
+  id: string; authorId: string; authorName: string; content: string;
+  createdAt: string; mentions?: string[]; subtaskId?: string | null;
 }
 ```
 
 ---
 
-## Mapeamento de Campos — Frontend ↔ Backend
+## Lacunas Resolvidas
 
-| Frontend (`Task`) | Backend (`tasks`) | Observação |
-|-------------------|-------------------|------------|
-| `task.id` | `tasks.id` | Igual |
-| `task.title` | `tasks.title` | Igual |
-| `task.description` | `tasks.description` | Igual |
-| `task.columnId` | `tasks.status` | **Renomeado** — `status` no banco = `columnId` na UI |
-| `task.position` | `tasks.position` | Igual |
-| `task.assignees` | `tasks.assignees TEXT[]` | Armazenam nomes, não IDs |
-| `task.labels` | `tasks.labels TEXT[]` | Banco: só nomes. Frontend: projeta cor via hash |
-| `task.createdAt` | `tasks.created_at` | camelCase vs snake_case |
-
-| Frontend (`TeamMember`) | Backend (`team_members`) | Observação |
-|-------------------------|--------------------------|------------|
-| `member.id` | `team_members.id` | Igual |
-| `member.name` | `team_members.name` | UPPER_SNAKE |
-| `member.username` | `team_members.username` | sem @ no TS, com @ no banco |
-| `member.email` | `team_members.email` | lowercase |
-| `member.role` | `team_members.role` | UPPER_SNAKE |
-| `member.isAdmin` | (calculado) | `role === "ADMIN_TOTAL" \| "ADMIN"` |
-
----
-
-## Lacunas de Dados Identificadas
-
-| # | Severidade | Lacuna | Impacto |
-|---|-----------|--------|---------|
-| 1 | 🔴 CRÍTICO | `team_members.password` em plaintext | Exposição de credenciais em dump do banco |
-| 2 | 🔴 ALTO | Labels sem tabela própria (`TEXT[]` em tasks) | Impossível renomear label em todos os cards de uma vez |
-| 3 | 🔴 ALTO | Colunas sem tabela no banco | Colunas customizadas perdidas em reload |
-| 4 | 🟡 MÉDIO | `tasks.assignees` armazena nomes (não IDs) | Renomear membro não atualiza assignments |
-| 5 | 🟡 MÉDIO | `task_title` desnormalizado em `notifications` | Pode ficar desatualizado se tarefa for renomeada |
-| 6 | 🟡 BAIXO | Sem `updated_at` em nenhuma tabela | Impossível saber última modificação |
+| # | Severidade | Lacuna | Status |
+|---|-----------|--------|--------|
+| 1 | 🔴 CRÍTICO | `team_members.password` em plaintext | ✅ CORRIGIDO (bcrypt) |
+| 2 | 🔴 ALTO | Labels sem tabela própria | ✅ CORRIGIDO (tabela `labels`) |
+| 3 | 🔴 ALTO | Colunas sem tabela no banco | ✅ CORRIGIDO (tabela `columns`) |
+| 4 | 🟡 MÉDIO | `tasks.assignees` armazena nomes | ⏳ Pendente |
+| 5 | 🟡 MÉDIO | `task_title` desnormalizado | ⏳ Pendente |
+| 6 | 🟡 BAIXO | Sem `updated_at` | ⏳ Pendente |

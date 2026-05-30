@@ -2,6 +2,15 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { showToast, ToastContainer } from "@/components/toast-notification"
+import {
+  DndContext, DragOverlay, closestCorners, KeyboardSensor,
+  PointerSensor, useSensor, useSensors, type DragStartEvent, type DragEndEvent, type DragOverEvent,
+} from "@dnd-kit/core"
+import {
+  SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 
 // ==================== TYPES ====================
 interface Label {
@@ -31,6 +40,7 @@ interface Subtask {
   position: number
   assignees: string[]
   comments: Comment[]
+  files: TaskFile[]
   timerStartedAt: string | null
   createdAt: string
 }
@@ -895,16 +905,34 @@ function SubtaskRow({
               <div className="text-white text-xs mt-1">{c.content}</div>
             </div>
           ))}
-          <div className="flex gap-2">
-            <textarea value={newComment} onChange={(e) => setNewComment(e.target.value)}
-              placeholder="Comentário..."
-              rows={2}
-              className="flex-1 px-2 py-1 bg-black border border-[#262626] text-white text-xs focus:border-[#00FF66] focus:outline-none resize-none" />
-            <button onClick={handleAddComment} disabled={!newComment.trim()}
-              className="px-2 border border-[#00FF66] text-[#00FF66] text-[10px] hover:bg-[#00FF66] hover:text-black transition-colors disabled:opacity-50">
-              [ OK ]
-            </button>
-          </div>
+          {subtask.files.length > 0 && (
+            <div className="space-y-1">
+              <div className="text-[#00FF66]/50 text-[10px]">ARQUIVOS:</div>
+              {subtask.files.map((f) => (
+                <a key={f.id} href={f.url} target="_blank" rel="noopener noreferrer"
+                  className="block border border-[#262626] bg-black p-1.5 text-[#00FF66] text-[10px] hover:underline">
+                  {f.name} ({(f.size / 1024).toFixed(1)} KB)
+                </a>
+              ))}
+            </div>
+          )}
+          <MentionInput value={newComment} onChange={setNewComment}
+            onSubmit={handleAddComment} team={team} placeholder="Comentário (use @ para mencionar)..." />
+          <label className="flex items-center gap-2 cursor-pointer p-1.5 border border-dashed border-[#262626] hover:border-[#00FF66] transition-colors">
+            <span className="text-[#00FF66]/50 text-[10px]">[ UPLOAD_FILE ]</span>
+            <input type="file" className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0]
+                if (!file) return
+                const formData = new FormData()
+                formData.append("file", file)
+                formData.append("subtaskId", subtask.id)
+                try {
+                  const res = await fetch("/api/upload", { method: "POST", body: formData })
+                  if (res.ok) window.location.reload()
+                } catch (err) { console.error("Upload failed:", err) }
+              }} />
+          </label>
         </div>
       )}
     </div>
@@ -1277,7 +1305,7 @@ function TaskEditModal({
 }
 
 // ==================== TASK CARD ====================
-function TaskCard({
+function SortableTaskCard({
   task,
   columnIndex,
   taskIndex,
@@ -1297,12 +1325,25 @@ function TaskCard({
   onMoveVertical: (direction: "up" | "down") => void
   onDelete: () => void
   onEdit: () => void
+  onCancel?: () => void
 }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  }
+
   return (
     <div
+      ref={setNodeRef}
+      style={style}
       onClick={onEdit}
       className="border border-[#262626] bg-[#1A1A1A] p-3 cursor-pointer hover:border-[#00FF66]/50 transition-colors"
     >
+      <div {...attributes} {...listeners} className="text-[#00FF66]/30 text-xs mb-1 cursor-grab active:cursor-grabbing select-none">
+        ⠿ {task.title ? "DRAG" : ""}
+      </div>
       {task.labels.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-2">
           {task.labels.map((label) => (
@@ -1311,16 +1352,12 @@ function TaskCard({
         </div>
       )}
 
-      <div className="text-white font-bold text-sm mb-2 break-words">
-        {task.title}
-      </div>
+      <div className="text-white font-bold text-sm mb-2 break-words">{task.title}</div>
       {task.description && (
-        <div className="text-white/70 text-xs mb-3 break-words line-clamp-2">
-          {task.description}
-        </div>
+        <div className="text-white/70 text-xs mb-3 break-words line-clamp-2">{task.description}</div>
       )}
 
-                      <div className="text-[#00FF66] text-xs mb-3 flex flex-wrap gap-1">
+      <div className="text-[#00FF66] text-xs mb-3 flex flex-wrap gap-1">
         {task.assignees.map((assignee, i) => {
           const display = assignee.startsWith("@") ? assignee : `@${assignee.toLowerCase().replace(/\s+/g, "_")}`
           return <span key={i}>{display}{i < task.assignees.length - 1 ? "," : ""}</span>
@@ -1328,21 +1365,15 @@ function TaskCard({
       </div>
 
       {task.comments.length > 0 && (
-        <div className="text-[#00FF66]/50 text-xs mb-3">
-          [ {task.comments.length} COMMENT{task.comments.length > 1 ? "S" : ""} ]
-        </div>
+        <div className="text-[#00FF66]/50 text-xs mb-3">[ {task.comments.length} COMMENT{task.comments.length > 1 ? "S" : ""} ]</div>
       )}
       {task.files && task.files.length > 0 && (
-        <div className="text-[#00FF66]/50 text-xs mb-3">
-          [ {task.files.length} FILE{task.files.length > 1 ? "S" : ""} ]
-        </div>
+        <div className="text-[#00FF66]/50 text-xs mb-3">[ {task.files.length} FILE{task.files.length > 1 ? "S" : ""} ]</div>
       )}
       {task.subtaskCount !== undefined && task.subtaskCount > 0 && (
         <div className="text-[#00FF66]/50 text-xs mb-3">
           [ {task.subtaskCount} SUBTASK{(task.subtaskCount || 0) > 1 ? "S" : ""} ]
-          {(task.totalEstimatedHours || 0) > 0 && (
-            <> | EST: {task.totalEstimatedHours}h</>
-          )}
+          {(task.totalEstimatedHours || 0) > 0 && <> | EST: {task.totalEstimatedHours}h</>}
           {(task.totalTimeSpent || 0) > 0 && (
             <> | REAL: {Math.floor((task.totalTimeSpent || 0) / 3600)}h {Math.floor(((task.totalTimeSpent || 0) % 3600) / 60)}m</>
           )}
@@ -1355,40 +1386,21 @@ function TaskCard({
             onClick={() => onMoveVertical("up")}
             disabled={taskIndex === 0}
             className="h-6 w-6 border border-[#262626] text-[#00FF66] text-xs hover:border-[#00FF66] transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
-          >
-            ▲
-          </button>
+          >▲</button>
           <button
             onClick={() => onMoveVertical("down")}
             disabled={taskIndex === totalTasks - 1}
             className="h-6 w-6 border border-[#262626] text-[#00FF66] text-xs hover:border-[#00FF66] transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
-          >
-            ▼
-          </button>
+          >▼</button>
         </div>
-
         {columnIndex > 0 && (
-          <button
-            onClick={() => onMove("left")}
-            className="h-8 px-2 border border-[#262626] text-[#00FF66] text-xs hover:border-[#00FF66] transition-colors"
-          >
-            ←
-          </button>
+          <button onClick={() => onMove("left")} className="h-8 px-2 border border-[#262626] text-[#00FF66] text-xs hover:border-[#00FF66] transition-colors">←</button>
         )}
         {columnIndex < totalColumns - 1 && (
-          <button
-            onClick={() => onMove("right")}
-            className="h-8 px-2 border border-[#262626] text-[#00FF66] text-xs hover:border-[#00FF66] transition-colors"
-          >
-            →
-          </button>
+          <button onClick={() => onMove("right")} className="h-8 px-2 border border-[#262626] text-[#00FF66] text-xs hover:border-[#00FF66] transition-colors">→</button>
         )}
-        <button
-          onClick={onDelete}
-          className="h-8 px-2 border border-[#FF3333]/50 text-[#FF3333] text-xs hover:border-[#FF3333] hover:bg-[#FF3333] hover:text-black transition-colors ml-auto"
-        >
-          DEL
-        </button>
+        <button onClick={onDelete} className="h-8 px-2 border border-[#FF3333]/50 text-[#FF3333] text-xs hover:border-[#FF3333] hover:bg-[#FF3333] hover:text-black transition-colors ml-auto">DEL</button>
+        {onCancel && <button onClick={onCancel} className="h-8 px-2 border border-[#FF3333] text-[#FF3333] text-xs hover:bg-[#FF3333] hover:text-black transition-colors">✕</button>}
       </div>
     </div>
   )
@@ -1496,7 +1508,11 @@ function KanbanColumn({
   onDeleteTask,
   onDeleteColumn,
   onEditTask,
+  onCancelTask,
   isDefault,
+  onMoveColumn,
+  columnPosition,
+  allColumnsCount,
 }: {
   column: Column
   columnIndex: number
@@ -1506,44 +1522,62 @@ function KanbanColumn({
   onMoveTask: (taskId: string, direction: "left" | "right") => void
   onMoveTaskVertical: (taskId: string, direction: "up" | "down") => void
   onDeleteTask: (taskId: string) => void
-  onDeleteColumn: () => void
   onEditTask: (task: Task) => void
+  onCancelTask?: (task: Task) => void
   isDefault: boolean
+  onMoveColumn?: (direction: "left" | "right") => void
+  columnPosition?: number
+  allColumnsCount?: number
 }) {
   const [showNewTaskForm, setShowNewTaskForm] = useState(false)
+  const taskIds = column.tasks.map((t) => t.id)
 
   return (
     <div className="flex-shrink-0 w-72 md:w-80 border border-[#262626] bg-black flex flex-col max-h-full">
       <div className="border-b border-[#262626] p-3 flex items-center justify-between bg-[#1A1A1A]">
-        <div className="flex items-center gap-2">
-          <span className="text-[#00FF66] font-bold text-sm">{column.name}</span>
-          <span className="text-[#00FF66]/50 text-xs">[{column.tasks.length}]</span>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-[#00FF66] font-bold text-sm truncate">{column.name}</span>
+          <span className="text-[#00FF66]/50 text-xs shrink-0">[{column.tasks.length}]</span>
         </div>
-        {!isDefault && (
-          <button
-            onClick={onDeleteColumn}
-            className="text-[#FF3333]/50 hover:text-[#FF3333] text-xs transition-colors px-2"
-          >
-            ×
-          </button>
-        )}
+        <div className="flex items-center gap-1 shrink-0">
+          {onMoveColumn && columnPosition !== undefined && (
+            <>
+              <button
+                onClick={() => onMoveColumn("left")}
+                disabled={columnPosition === 0}
+                className="h-5 w-5 border border-[#262626] text-[#00FF66] text-[10px] hover:border-[#00FF66] transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
+              >◀</button>
+              <button
+                onClick={() => onMoveColumn("right")}
+                disabled={columnPosition === (allColumnsCount ?? totalColumns) - 1}
+                className="h-5 w-5 border border-[#262626] text-[#00FF66] text-[10px] hover:border-[#00FF66] transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
+              >▶</button>
+            </>
+          )}
+          {!isDefault && (
+            <button onClick={onDeleteColumn} className="text-[#FF3333]/50 hover:text-[#FF3333] text-xs transition-colors px-1">×</button>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
-        {column.tasks.map((task, taskIndex) => (
-          <TaskCard
-            key={task.id}
-            task={task}
-            columnIndex={columnIndex}
-            taskIndex={taskIndex}
-            totalColumns={totalColumns}
-            totalTasks={column.tasks.length}
-            onMove={(direction) => onMoveTask(task.id, direction)}
-            onMoveVertical={(direction) => onMoveTaskVertical(task.id, direction)}
-            onDelete={() => onDeleteTask(task.id)}
-            onEdit={() => onEditTask(task)}
-          />
-        ))}
+        <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
+          {column.tasks.map((task, taskIndex) => (
+            <SortableTaskCard
+              key={task.id}
+              task={task}
+              columnIndex={columnIndex}
+              taskIndex={taskIndex}
+              totalColumns={totalColumns}
+              totalTasks={column.tasks.length}
+              onMove={(direction) => onMoveTask(task.id, direction)}
+              onMoveVertical={(direction) => onMoveTaskVertical(task.id, direction)}
+              onDelete={() => onDeleteTask(task.id)}
+              onEdit={() => onEditTask(task)}
+              onCancel={onCancelTask ? () => onCancelTask(task) : undefined}
+            />
+          ))}
+        </SortableContext>
 
         {showNewTaskForm ? (
           <NewTaskForm
@@ -1750,12 +1784,91 @@ function KanbanBoard({
     task: Task
     columnId: string
   } | null>(null)
+  const [activeTask, setActiveTask] = useState<{ task: Task; columnId: string } | null>(null)
+  const [filterAssignee, setFilterAssignee] = useState<string[]>([])
+  const [filterLabel, setFilterLabel] = useState<string[]>([])
+  const [pendingCloseTask, setPendingCloseTask] = useState<{ taskId: string; fromColumnId: string; toColumnId: string; newPosition?: number } | null>(null)
+  const [cancelModalTask, setCancelModalTask] = useState<Task | null>(null)
+  const [cancelReason, setCancelReason] = useState("")
 
-  const handleMoveTask = (columnId: string, taskId: string, direction: "left" | "right") => {
+  const allLabels: Label[] = columns.flatMap((c) => c.tasks.flatMap((t) => t.labels))
+    .filter((l, i, arr) => arr.findIndex((x) => x.id === l.id) === i)
+
+  const filteredColumns = columns.map((col) => ({
+    ...col,
+    tasks: col.tasks.filter((t) => {
+      if (filterAssignee.length > 0 && !t.assignees.some((a) => filterAssignee.includes(a))) return false
+      if (filterLabel.length > 0 && !t.labels.some((l) => filterLabel.includes(l.id))) return false
+      return true
+    }),
+  }))
+
+  const findColumnByTaskId = (taskId: string) =>
+    columns.find((c) => c.tasks.some((t) => t.id === taskId))
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const taskId = event.active.id as string
+    const column = findColumnByTaskId(taskId)
+    const task = column?.tasks.find((t) => t.id === taskId)
+    if (task && column) setActiveTask({ task, columnId: column.id })
+  }
+
+  const handleDragOver = (event: DragOverEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const activeCol = findColumnByTaskId(active.id as string)
+    const overCol = findColumnByTaskId(over.id as string)
+    if (!activeCol || !overCol || activeCol.id === overCol.id) return
+    if (isClosingColumn(overCol.id)) {
+      checkSubtaskCompletion(active.id as string).then((ok) => {
+        if (!ok) {
+          setActiveTask(null)
+          showToast("Task possui subtarefas pendentes! Feche-as antes.", "warning")
+          return
+        }
+      })
+    }
+    const activeIndex = activeCol.tasks.findIndex((t) => t.id === active.id)
+    const overIndex = overCol.tasks.findIndex((t) => t.id === over.id)
+    if (activeIndex === -1) return
+    onMoveTask(active.id as string, activeCol.id, overCol.id, overIndex === -1 ? overCol.tasks.length : overIndex)
+  }
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setActiveTask(null)
+  }
+
+  const isClosingColumn = (colId: string) => {
+    const col = columns.find((c) => c.id === colId)
+    return col?.name === "FEITO"
+  }
+
+  const checkSubtaskCompletion = async (taskId: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/subtasks?taskId=${taskId}`)
+      const d = await res.json()
+      const sts: Subtask[] = d.subtasks || []
+      return sts.length === 0 || sts.every((st) => st.status === "APROVADO" || st.status === "FEITO")
+    } catch { return true }
+  }
+
+  const handleMoveTask = async (columnId: string, taskId: string, direction: "left" | "right") => {
     const columnIndex = columns.findIndex((c) => c.id === columnId)
     const toIndex = direction === "left" ? columnIndex - 1 : columnIndex + 1
     if (toIndex < 0 || toIndex >= columns.length) return
     const toColumnId = columns[toIndex].id
+    if (isClosingColumn(toColumnId)) {
+      const ok = await checkSubtaskCompletion(taskId)
+      if (!ok) {
+        setPendingCloseTask({ taskId, fromColumnId: columnId, toColumnId })
+        return
+      }
+    }
     onMoveTask(taskId, columnId, toColumnId)
   }
 
@@ -1767,6 +1880,22 @@ function KanbanBoard({
     const newPosition = direction === "up" ? taskIndex - 1 : taskIndex + 1
     if (newPosition < 0 || newPosition >= column.tasks.length) return
     onMoveTask(taskId, columnId, columnId, newPosition)
+  }
+
+  const handleColumnMove = (columnId: string, direction: "left" | "right") => {
+    const idx = columns.findIndex((c) => c.id === columnId)
+    if (idx === -1) return
+    const targetIdx = direction === "left" ? idx - 1 : idx + 1
+    if (targetIdx < 0 || targetIdx >= columns.length) return
+    const reordered = [...columns]
+    ;[reordered[idx], reordered[targetIdx]] = [reordered[targetIdx], reordered[idx]]
+    reordered.forEach((c, i) => { c.position = i })
+    setColumns(reordered)
+    fetch(`/api/columns/reorder`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ columns: reordered.map((c, i) => ({ id: c.id, position: i })) }),
+    }).catch(console.error)
   }
 
   return (
@@ -1829,34 +1958,107 @@ function KanbanBoard({
         />
       )}
 
-      <div className="flex-1 p-3 md:p-6 overflow-hidden">
-        <div className="flex items-center gap-4 mb-4 overflow-x-auto pb-2">
-          <div className="text-[#00FF66] text-sm whitespace-nowrap">
-            {">"} BOARD_STATUS: SUPABASE_CONNECTED
-          </div>
-          <div className="text-[#00FF66]/50 text-xs whitespace-nowrap">
-            COLUMNS: {columns.length} | TASKS:{" "}
-            {columns.reduce((acc, col) => acc + col.tasks.length, 0)}
+      {pendingCloseTask && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="border-2 border-[#FF3333] bg-black max-w-lg w-full p-6">
+            <div className="text-[#FF3333] font-bold text-sm mb-4">{">"} SUBTAREFAS_PENDENTES</div>
+            <div className="text-white/70 text-xs mb-6">
+              Esta tarefa possui subtarefas que ainda não foram concluídas (APROVADO/FEITO). Deseja movê-la para FEITO mesmo assim?
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => {
+                if (pendingCloseTask) onMoveTask(pendingCloseTask.taskId, pendingCloseTask.fromColumnId, pendingCloseTask.toColumnId, pendingCloseTask.newPosition)
+                setPendingCloseTask(null)
+              }} className="flex-1 h-10 border border-[#FF3333] text-[#FF3333] text-xs hover:bg-[#FF3333] hover:text-black transition-colors">[ FORCAR_MOVER ]</button>
+              <button onClick={() => setPendingCloseTask(null)} className="flex-1 h-10 border border-[#00FF66] text-[#00FF66] text-xs hover:bg-[#00FF66] hover:text-black transition-colors">[ CANCELAR ]</button>
+            </div>
           </div>
         </div>
+      )}
 
-        <div className="flex gap-4 overflow-x-auto pb-4 h-[calc(100vh-200px)] md:h-[calc(100vh-180px)]">
-          {columns.map((column, index) => (
-            <KanbanColumn
-              key={column.id}
-              column={column}
-              columnIndex={index}
-              totalColumns={columns.length}
-              team={team}
-              onAddTask={(task) => onAddTask(column.id, task)}
-              onMoveTask={(taskId, direction) => handleMoveTask(column.id, taskId, direction)}
-              onMoveTaskVertical={(taskId, direction) => handleMoveTaskVertical(column.id, taskId, direction)}
-              onDeleteTask={(taskId) => onDeleteTask(taskId)}
-              onDeleteColumn={() => onDeleteColumn(column.id)}
-              onEditTask={(task) => setEditingTask({ task, columnId: column.id })}
-              isDefault={DEFAULT_COLUMN_NAMES.includes(column.name)}
-            />
-          ))}
+      {cancelModalTask && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="border-2 border-[#FF3333] bg-black max-w-lg w-full p-6">
+            <div className="text-[#FF3333] font-bold text-sm mb-4">{">"} CANCELAR_TAREFA</div>
+            <div className="text-white/70 text-xs mb-4">Justificativa para cancelamento de "{cancelModalTask.title}":</div>
+            <textarea value={cancelReason} onChange={(e) => setCancelReason(e.target.value)}
+              rows={4} placeholder="MOTIVO_DO_CANCELAMENTO..."
+              className="w-full px-3 py-2 bg-[#1A1A1A] border border-[#262626] text-white text-sm placeholder:text-[#FF3333]/30 focus:border-[#FF3333] focus:outline-none resize-none mb-4" />
+            <div className="flex gap-3">
+              <button onClick={async () => {
+                if (!cancelModalTask || !cancelReason.trim()) { showToast("Informe o motivo do cancelamento.", "warning"); return }
+                onUpdateTask(cancelModalTask.id, { description: `${cancelModalTask.description}\n[CANCELADO: ${cancelReason.trim()}]` })
+                setCancelModalTask(null)
+                setCancelReason("")
+                showToast("Tarefa cancelada.", "warning")
+              }} className="flex-1 h-10 border border-[#FF3333] text-[#FF3333] text-xs hover:bg-[#FF3333] hover:text-black transition-colors">[ CONFIRMAR_CANCELAMENTO ]</button>
+              <button onClick={() => { setCancelModalTask(null); setCancelReason("") }} className="flex-1 h-10 border border-[#00FF66] text-[#00FF66] text-xs hover:bg-[#00FF66] hover:text-black transition-colors">[ VOLTAR ]</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex-1 p-3 md:p-6 overflow-hidden">
+        <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-2 flex-wrap">
+          <div className="text-[#00FF66] text-sm whitespace-nowrap">{">"} BOARD_STATUS: SUPABASE_CONNECTED</div>
+          <div className="text-[#00FF66]/50 text-xs whitespace-nowrap">COLUMNS: {columns.length} | TASKS: {columns.reduce((acc, col) => acc + col.tasks.length, 0)}</div>
+          <div className="flex-1" />
+          <select
+            multiple
+            value={filterAssignee}
+            onChange={(e) => setFilterAssignee(Array.from(e.target.selectedOptions, (o) => o.value))}
+            className="h-8 max-w-[140px] bg-[#1A1A1A] border border-[#262626] text-[#00FF66] text-[10px] focus:border-[#00FF66] focus:outline-none"
+          >
+            {team.map((m) => (
+              <option key={m.id} value={m.name}>{m.username}</option>
+            ))}
+          </select>
+          <select
+            multiple
+            value={filterLabel}
+            onChange={(e) => setFilterLabel(Array.from(e.target.selectedOptions, (o) => o.value))}
+            className="h-8 max-w-[140px] bg-[#1A1A1A] border border-[#262626] text-[#00FF66] text-[10px] focus:border-[#00FF66] focus:outline-none"
+          >
+            {allLabels.map((l) => (
+              <option key={l.id} value={l.id}>{l.name}</option>
+            ))}
+          </select>
+          {(filterAssignee.length > 0 || filterLabel.length > 0) && (
+            <button
+              onClick={() => { setFilterAssignee([]); setFilterLabel([]) }}
+              className="h-8 px-2 border border-[#FF3333]/50 text-[#FF3333] text-[10px] hover:border-[#FF3333] transition-colors"
+            >CLEAR</button>
+          )}
+        </div>
+
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCorners}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragEnd={handleDragEnd}
+        >
+          <div className="flex gap-4 overflow-x-auto pb-4 h-[calc(100vh-200px)] md:h-[calc(100vh-180px)]">
+            {filteredColumns.map((column, index) => (
+              <KanbanColumn
+                key={column.id}
+                column={column}
+                columnIndex={index}
+                totalColumns={filteredColumns.length}
+                team={team}
+                onAddTask={(task) => onAddTask(column.id, task)}
+                onMoveTask={(taskId, direction) => handleMoveTask(column.id, taskId, direction)}
+                onMoveTaskVertical={(taskId, direction) => handleMoveTaskVertical(column.id, taskId, direction)}
+                onDeleteTask={(taskId) => onDeleteTask(taskId)}
+                onDeleteColumn={() => onDeleteColumn(column.id)}
+                onEditTask={(task) => setEditingTask({ task, columnId: column.id })}
+                onCancelTask={(task) => setCancelModalTask(task)}
+                isDefault={DEFAULT_COLUMN_NAMES.includes(column.name)}
+                onMoveColumn={(dir) => handleColumnMove(column.id, dir)}
+                columnPosition={columns.findIndex((c) => c.id === column.id)}
+                allColumnsCount={columns.length}
+              />
+            ))}
 
           {showNewColumnForm ? (
             <NewColumnForm
@@ -1875,6 +2077,15 @@ function KanbanBoard({
             </button>
           )}
         </div>
+        <DragOverlay>
+          {activeTask ? (
+            <div className="border border-[#00FF66] bg-[#1A1A1A] p-3 opacity-80 w-72 md:w-80">
+              <div className="text-white font-bold text-sm mb-2">{activeTask.task.title}</div>
+              <div className="text-[#00FF66] text-xs">[ DRAGGING ]</div>
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
       </div>
 
       <footer className="border-t border-[#262626] p-3 text-center">
@@ -1948,9 +2159,21 @@ export default function BroLabTask() {
     }
   }, [currentUser])
 
-  // Initial load
+  // Initial load: restore session then fetch data
   useEffect(() => {
     const init = async () => {
+      setLoadingMessage("RESTORING_SESSION...")
+      try {
+        const meRes = await fetch("/api/auth/me")
+        if (meRes.ok) {
+          const meData = await meRes.json()
+          setCurrentUser(meData.user)
+        }
+      } catch { /* no session */ }
+      if (!currentUser) {
+        setIsLoading(false)
+        return
+      }
       setLoadingMessage("CONNECTING_TO_SUPABASE...")
       await fetchData()
       setLoadingMessage("SYSTEM_READY")
@@ -1989,6 +2212,7 @@ export default function BroLabTask() {
             read: n.read,
           }
           setNotifications((prev) => [newNotif, ...prev])
+          showToast(n.message || `Nova notificação`, n.type === 'mention' ? 'warning' : 'info')
         },
       )
       .subscribe()
@@ -2013,7 +2237,8 @@ export default function BroLabTask() {
   }
 
   // Logout handler
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" })
     setCurrentUser(null)
     setNotifications([])
   }
@@ -2219,30 +2444,33 @@ export default function BroLabTask() {
   }
 
   if (!currentUser) {
-    return <LoginScreen onLogin={handleLogin} isLoading={false} />
+    return <><LoginScreen onLogin={handleLogin} isLoading={false} /><ToastContainer /></>
   }
 
   return (
-    <KanbanBoard
-      currentUser={currentUser}
-      team={team}
-      columns={columns}
-      notifications={notifications}
-      onLogout={handleLogout}
-      onUpdateUser={handleUpdateUser}
-      onAddTeamMember={handleAddTeamMember}
-      onDeleteTeamMember={handleDeleteTeamMember}
-      onAddColumn={handleAddColumn}
-      onDeleteColumn={handleDeleteColumn}
-      onAddTask={handleAddTask}
-      onUpdateTask={handleUpdateTask}
-      onDeleteTask={handleDeleteTask}
-      onMoveTask={handleMoveTask}
-      onAddComment={handleAddComment}
-      onEditComment={handleEditComment}
-      onMarkNotificationRead={handleMarkNotificationRead}
-      onClearAllNotifications={handleClearAllNotifications}
-      refreshData={fetchData}
-    />
+    <>
+      <KanbanBoard
+        currentUser={currentUser}
+        team={team}
+        columns={columns}
+        notifications={notifications}
+        onLogout={handleLogout}
+        onUpdateUser={handleUpdateUser}
+        onAddTeamMember={handleAddTeamMember}
+        onDeleteTeamMember={handleDeleteTeamMember}
+        onAddColumn={handleAddColumn}
+        onDeleteColumn={handleDeleteColumn}
+        onAddTask={handleAddTask}
+        onUpdateTask={handleUpdateTask}
+        onDeleteTask={handleDeleteTask}
+        onMoveTask={handleMoveTask}
+        onAddComment={handleAddComment}
+        onEditComment={handleEditComment}
+        onMarkNotificationRead={handleMarkNotificationRead}
+        onClearAllNotifications={handleClearAllNotifications}
+        refreshData={fetchData}
+      />
+      <ToastContainer />
+    </>
   )
 }

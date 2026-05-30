@@ -14,8 +14,8 @@ erDiagram
         TEXT   name        "Nome completo"
         TEXT   username    "Prefixado com @"
         TEXT   email       "Único"
-        TEXT   password    "⚠️ PLAINTEXT"
-        TEXT   role        "String livre: ADMIN_TOTAL, ADMIN, DEVELOPER..."
+        TEXT   password    "✅ bcrypt hash"
+        TEXT   role        "ADMIN_TOTAL, ADMIN, COLLABORATOR..."
         TIMESTAMPTZ created_at "DEFAULT NOW()"
     }
 
@@ -23,18 +23,47 @@ erDiagram
         UUID    id           PK "gen_random_uuid()"
         TEXT    title        "Título da task"
         TEXT    description  "Descrição (nullable)"
-        TEXT    status       "Nome da coluna: BACKLOG, FAZENDO..."
+        TEXT    status       "BACKLOG, FAZENDO..."
         INTEGER position     "Ordem dentro da coluna"
         TEXT[]  assignees    "⚠️ Nomes dos membros (não IDs)"
-        TEXT[]  labels       "⚠️ Nomes das labels (sem tabela)"
+        TEXT[]  labels       "nome||cor (desde migration 003)"
         TIMESTAMPTZ created_at "DEFAULT NOW()"
     }
 
+    subtasks {
+        UUID    id              PK "gen_random_uuid()"
+        UUID    task_id         FK "→ tasks.id ON DELETE CASCADE"
+        TEXT    title           "Título"
+        TEXT    description     "Descrição"
+        FLOAT   estimated_hours "Horas estimadas"
+        FLOAT   time_spent      "Segundos acumulados de cronômetro"
+        TEXT    status          "BACKLOG → FAZENDO → ALTERAÇÕES → APROVADO → FEITO"
+        INTEGER position        "Ordem"
+        TEXT[]  assignees       "Responsáveis"
+        TIMESTAMPTZ timer_started_at "Início do cronômetro (null se parado)"
+        TIMESTAMPTZ created_at  "DEFAULT NOW()"
+    }
+
     task_comments {
-        UUID    id         PK "gen_random_uuid()"
-        UUID    task_id    FK "→ tasks.id"
-        TEXT    text       "Conteúdo do comentário"
-        TEXT    author     "Nome do autor"
+        UUID    id              PK "gen_random_uuid()"
+        UUID    task_id         FK "→ tasks.id"
+        UUID    subtask_id      FK "→ subtasks.id ON DELETE CASCADE (opcional)"
+        TEXT    author_username "Username do autor"
+        TEXT    content         "Conteúdo do comentário"
+        TIMESTAMPTZ created_at "DEFAULT NOW()"
+    }
+
+    columns {
+        UUID    id          PK "gen_random_uuid()"
+        TEXT    name        "UNIQUE — BACKLOG, FAZENDO..."
+        INTEGER position    "Ordem"
+        TIMESTAMPTZ created_at "DEFAULT NOW()"
+    }
+
+    labels {
+        UUID    id          PK "gen_random_uuid()"
+        TEXT    name        "UNIQUE — UPPERCASE"
+        TEXT    color       "HEX: #6B7280, #EF4444..."
         TIMESTAMPTZ created_at "DEFAULT NOW()"
     }
 
@@ -50,19 +79,21 @@ erDiagram
 
     notifications {
         UUID    id          PK "gen_random_uuid()"
-        UUID    user_id     FK "→ team_members.id (destinatário)"
-        TEXT    type        "mention | assignment | comment"
+        UUID    user_id     FK "→ team_members.id"
+        TEXT    type        "mention, task_created, task_updated, task_deleted"
         TEXT    message     "Texto da notificação"
         UUID    task_id     "ID da task relacionada"
-        TEXT    task_title  "⚠️ Desnormalizado — título no momento da criação"
+        TEXT    task_title  "⚠️ Desnormalizado"
         TEXT    from_user   "Nome do autor da ação"
         BOOLEAN read        "DEFAULT false"
         TIMESTAMPTZ created_at "DEFAULT NOW()"
     }
 
-    tasks           ||--o{ task_comments : "tem"
-    tasks           ||--o{ task_files    : "tem (CASCADE DELETE)"
-    team_members    ||--o{ notifications : "recebe"
+    tasks           ||--o{ subtasks       : "tem (CASCADE DELETE)"
+    tasks           ||--o{ task_comments  : "tem"
+    tasks           ||--o{ task_files     : "tem (CASCADE DELETE)"
+    subtasks        ||--o{ task_comments  : "tem (CASCADE DELETE)"
+    team_members    ||--o{ notifications  : "recebe"
 ```
 
 ---

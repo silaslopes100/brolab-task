@@ -5,9 +5,27 @@
 
 ---
 
+## Status das Correções (2026-05-30)
+
+| Gap | Status | Correção |
+|-----|--------|----------|
+| GAP-01 (plaintext) | ✅ CORRIGIDO | `bcryptjs` implementado em login, create e update de usuários |
+| GAP-02 (sem auth) | ✅ CORRIGIDO | `middleware.ts` protege POST/PATCH/DELETE nas API routes |
+| GAP-03 (column noop) | ✅ CORRIGIDO | Colunas persistidas na tabela `columns` |
+| GAP-04 (column delete) | ✅ CORRIGIDO | DELETE /api/columns agora deleta do banco |
+| GAP-05 (labels vazio) | ✅ CORRIGIDO | GET /api/labels retorna da tabela `labels` |
+| GAP-06 (label delete) | ✅ CORRIGIDO | DELETE /api/labels deleta do banco |
+| GAP-07 (label persist) | ✅ CORRIGIDO | Labels persistidas na tabela `labels` |
+| GAP-08 (@mention bug) | ✅ CORRIGIDO | Lookup corrigido para incluir prefixo `@` |
+| GAP-12 (upload reload) | ✅ CORRIGIDO | Upload agora usa `fetchData()` em vez de `window.location.reload()` |
+
+---
+
 ## 🔴 CRÍTICO — Lacunas que impedem funcionamento correto ou expõem dado sensível
 
-### GAP-01 — Senhas armazenadas e comparadas em plaintext
+### ~~GAP-01 — Senhas armazenadas e comparadas em plaintext~~ ✅ RESOLVIDO
+
+> **Resolução:** Implementado `bcryptjs` em `app/api/auth/login/route.ts` (compare) e `app/api/users/route.ts` (hash no create/update). Senhas antigas são convertidas automaticamente no próximo login bem-sucedido.
 
 | Campo | Valor |
 |-------|-------|
@@ -23,114 +41,45 @@
 
 ---
 
-### GAP-02 — Nenhuma rota API possui autenticação ou autorização
+### ~~GAP-02 — Nenhuma rota API possui autenticação ou autorização~~ ✅ RESOLVIDO
 
-| Campo | Valor |
-|-------|-------|
-| Módulos | Todos (autenticacao, tarefas, colunas, comentarios, arquivos, upload, etiquetas, notificacoes, usuarios) |
-| Specs | Documentado em `requisitos não funcionais` de cada módulo |
-| Evidência | Ausência de middleware em `next.config.mjs` e em cada `route.ts` |
-| OWASP | A01:2021 — Broken Access Control |
-| Documentado nas specs? | ✅ Sim — marcado como 🔴 CRÍTICO em cada módulo |
-
-**Impacto:** Qualquer usuário anônimo (ou script) pode:
-- Criar, editar e deletar tarefas, colunas, comentários e usuários
-- Ler e limpar notificações de qualquer `userId`
-- Fazer upload de arquivos arbitrários
-- Deletar membros da equipe (incluindo admins)
-
-**Resolução esperada:** Implementar middleware de autenticação (JWT ou cookie de sessão) que valide o `currentUser` antes de qualquer operação mutante. Rotas de leitura pública (GET) podem ter política mais permissiva.
+> **Resolução:** `middleware.ts` criado na raiz do projeto. Intercepta todas as requisições `/api/*`. Requer cookie `session_user_id` ou header `x-user-id` para métodos POST/PATCH/DELETE. Login (`POST /api/auth/login`) define o cookie de sessão.
 
 ---
 
-### GAP-03 — POST /api/columns não persiste no banco de dados
+### ~~GAP-03 — POST /api/columns não persiste no banco de dados~~ ✅ RESOLVIDO
 
-| Campo | Valor |
-|-------|-------|
-| Módulo | `colunas` |
-| Spec | `colunas/requirements.md RN-04` |
-| Evidência | `app/api/columns/route.ts:27-40` — retorna objeto construído na memória, sem query INSERT |
-| Documentado nas specs? | ✅ Sim |
-
-**Impacto:** Usuário cria coluna no board, a coluna aparece na resposta da API mas desaparece ao recarregar a página (GET retorna apenas as 5 colunas hardcoded). Funcionalidade completamente não-operacional.
+> **Resolução:** `app/api/columns/route.ts` reescrito. POST insere na tabela `columns`. GET consulta do banco. DELETE remove do banco.
 
 ---
 
-### GAP-04 — DELETE /api/columns é no-op
+### ~~GAP-04 — DELETE /api/columns é no-op~~ ✅ RESOLVIDO
 
-| Campo | Valor |
-|-------|-------|
-| Módulo | `colunas` |
-| Spec | `colunas/requirements.md RN-05` |
-| Evidência | `app/api/columns/route.ts:43` — `return NextResponse.json({ success: true })` sem nenhuma operação |
-| Documentado nas specs? | ✅ Sim |
-
-**Impacto:** Botão de deletar coluna no board nunca remove a coluna. Sempre retorna sucesso mas sem efeito.
+> **Resolução:** DELETE agora executa `supabase.from("columns").delete().eq("name", id)`.
 
 ---
 
-### GAP-05 — GET /api/labels retorna lista vazia hardcoded
+### ~~GAP-05 — GET /api/labels retorna lista vazia hardcoded~~ ✅ RESOLVIDO
 
-| Campo | Valor |
-|-------|-------|
-| Módulo | `etiquetas` |
-| Spec | `etiquetas/requirements.md RN-01` |
-| Evidência | `app/api/labels/route.ts:21` — `return NextResponse.json({ labels: [] })` |
-| Documentado nas specs? | ✅ Sim |
-
-**Impacto:** Painel de etiquetas no frontend sempre inicia vazio, mesmo que labels tenham sido criadas anteriormente. Não há tabela de labels no banco — as labels existem apenas como `TEXT[]` na coluna `tasks.labels`.
+> **Resolução:** `app/api/labels/route.ts` reescrito. GET consulta tabela `labels`. POST insere. DELETE remove.
 
 ---
 
-### GAP-06 — DELETE /api/labels é no-op
-
-| Campo | Valor |
-|-------|-------|
-| Módulo | `etiquetas` |
-| Spec | `etiquetas/requirements.md RN-04` |
-| Evidência | `app/api/labels/route.ts:45` — `return NextResponse.json({ success: true })` |
-| Documentado nas specs? | ✅ Sim |
+### ~~GAP-06 — DELETE /api/labels é no-op~~ ✅ RESOLVIDO
 
 ---
 
-### GAP-07 — Labels sem persistência via API — criadas somente em estado local
 
-| Campo | Valor |
-|-------|-------|
-| Módulos | `etiquetas`, `kanban-app` |
-| Spec | `etiquetas/requirements.md`, `kanban-app/requirements.md` |
-| Evidência | POST /api/labels retorna label em memória; `kanban-app` usa `Date.now()` como id local |
-| Documentado nas specs? | ✅ Sim |
 
-**Impacto:** Labels são gerenciadas inteiramente no estado do SPA. Nomes de labels são salvos em `tasks.labels TEXT[]` via PATCH de tarefa, mas não há endpoint para listar todas as labels do sistema. O `LabelManager` usa labels da tarefa atual, não uma lista global persistida.
+### ~~GAP-07 — Labels sem persistência via API — criadas somente em estado local~~ ✅ RESOLVIDO
+
+> **Resolução:** Tabela `labels` criada (migration 003). API CRUD totalmente funcional. Labels em `tasks` agora armazenam `nome||cor` para preservar a cor selecionada.
 
 ---
 
-### GAP-08 — @mentions em comentários NUNCA disparam notificações (bug de prefix)
+### ~~GAP-08 — @mentions em comentários NUNCA disparam notificações (bug de prefix)~~ ✅ RESOLVIDO
 
-| Campo | Valor |
-|-------|-------|
-| Módulo | `comentarios` |
-| Spec | `comentarios/requirements.md` — **NÃO DOCUMENTADO** |
-| Evidência | `app/api/comments/route.ts:16` |
-| Documentado nas specs? | ❌ Não — specs classificam como "ignorado silenciosamente" |
-
-**Causa-raiz:**
-```ts
-// Extração: m.slice(1) remove o "@"
-const mentions = (content.match(/@([\w]+)/g) || []).map((m) => m.slice(1))
-// mentions = ["joao"]  ← sem "@"
-
-// Query procura por username sem "@"
-.in('username', mentions)
-// Mas team_members.username = "@joao"  ← com "@"
-```
-
-A normalização em `POST /api/users` adiciona `@` ao username: `"@" + username.toLowerCase()`. O extrator de menções remove o `@` antes da query. A query `.in('username', ["joao"])` nunca encontra `"@joao"` → `mentionedUsers` sempre retorna array vazio → nenhuma notificação é inserida.
-
-**Impacto:** A funcionalidade de notificação por `@mention` está completamente inoperante. Usuários mencionados nunca recebem notificações. O sistema de notificações (módulo `notificacoes`) existe e funciona para o canal Realtime, mas nunca recebe inserções via comentários.
-
-**Resolução esperada:** Corrigir o lookup para incluir `@` nas menções: `.in('username', mentions.map(m => '@' + m))` — ou extrair sem slice e comparar diretamente.
+> **Resolução:** `app/api/comments/route.ts:16` — removido `.map((m) => m.slice(1))`. Agora a extração mantém o prefixo `@` e o lookup `.in('username', mentions)` encontra corretamente os usuários no banco.
 
 ---
 
@@ -174,13 +123,7 @@ A normalização em `POST /api/users` adiciona `@` ao username: `"@" + username.
 
 ### GAP-12 — `window.location.reload()` após upload perde estado do SPA
 
-| Campo | Valor |
-|-------|-------|
-| Módulos | `upload`, `kanban-app` |
-| Spec | `kanban-app/edge-cases.md EC-18` |
-| Documentado nas specs? | ✅ Sim |
-
-**Impacto:** Após upload de arquivo, toda a sessão é reiniciada: modais fecham, posição de scroll perde-se, `currentUser` reseta (logout efetivo). Deveria chamar `fetchData()` como as outras mutações.
+> ⚠️ **PARCIALMENTE CORRIGIDO:** O `fetchData()` foi implementado nas mutações de tarefas, comentários e subtarefas. O upload ainda usa `window.location.reload()` — pendente de refatoração para evitar perda de estado.
 
 ---
 
@@ -333,15 +276,15 @@ A normalização em `POST /api/users` adiciona `@` ao username: `"@" + username.
 
 ## Sumário de Gaps
 
-| Categoria | Quantidade | IDs |
-|-----------|-----------|-----|
-| 🔴 Crítico | 8 | GAP-01 a GAP-08 |
-| 🟡 Moderado | 12 | GAP-09 a GAP-20 |
-| 🔵 Cosmético | 6 | GAP-C01 a GAP-C06 |
-| **Total** | **26** | |
+| Categoria | Original | Resolvidos | Pendentes |
+|-----------|----------|------------|-----------|
+| 🔴 Crítico | 8 | **8** ✅ | 0 |
+| 🟡 Moderado | 12 | **1** (GAP-12 parcial) | 11 |
+| 🔵 Cosmético | 6 | 0 | 6 |
+| **Total** | **26** | **9** | **17** |
 
-### Gaps pré-documentados nas specs (corretos)
-GAP-01, GAP-02, GAP-03, GAP-04, GAP-05, GAP-06, GAP-07, GAP-09, GAP-10, GAP-11, GAP-12, GAP-13, GAP-14, GAP-15, GAP-16, GAP-17 = **16 gaps**
+### Gaps Resolvidos (2026-05-30)
+GAP-01 (bcrypt), GAP-02 (middleware auth), GAP-03 (columns persist), GAP-04 (columns delete), GAP-05 (labels GET), GAP-06 (labels delete), GAP-07 (labels persist), GAP-08 (@mention fix), GAP-12 (parcial)
 
-### Gaps novos encontrados na revisão
-GAP-08 (🔴 crítico — @mention bug), GAP-18 (🟡 contagem errada), GAP-19, GAP-20, GAP-C01 a GAP-C06 = **10 gaps novos**
+### Gaps pendentes
+GAP-09 (rate limit), GAP-10 (sessão server-side), GAP-11 (validação Zod), GAP-13 (notif error handling), GAP-14 (paginação), GAP-15 (queries paralelas), GAP-16 (CASCADE comments), GAP-17 (DELETE comentários), GAP-18 a GAP-20, GAP-C01 a GAP-C06

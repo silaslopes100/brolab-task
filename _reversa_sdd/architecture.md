@@ -71,14 +71,16 @@ brolab-task/
 │   ├── globals.css           ← Estilos globais
 │   └── api/
 │       ├── auth/login/       ← POST: autenticação customizada
-│       ├── tasks/            ← CRUD tasks
-│       ├── columns/          ← GET colunas (hardcoded)
-│       ├── comments/         ← POST comentários + @mentions
+│       ├── tasks/            ← CRUD tasks (agrega subtasks)
+│       ├── subtasks/         ← [NOVO] CRUD subtasks + tempo
+│       ├── timer/            ← [NOVO] Cronômetro automático
+│       ├── columns/          ← Colunas (persistido no DB)
+│       ├── comments/         ← CRUD comentários + @mentions + subtasks
 │       ├── files/            ← GET + DELETE arquivos
 │       ├── upload/           ← POST upload multipart
-│       ├── labels/           ← GET/POST/DELETE labels (in-memory)
+│       ├── labels/           ← Labels (persistido no DB)
 │       ├── notifications/    ← GET + PATCH + DELETE notificações
-│       └── users/            ← GET + POST membros
+│       └── users/            ← CRUD membros (bcrypt)
 ├── lib/
 │   └── supabase/
 │       ├── admin.ts          ← Client service_role (sem RLS)
@@ -120,9 +122,12 @@ brolab-task/
 │  │   PostgreSQL     │  │   Storage    │  │     Realtime        │ │
 │  │  team_members   │  │  task-files  │  │  postgres_changes   │ │
 │  │  tasks          │  │  (S3-compat) │  │  (notifications)    │ │
-│  │  task_comments  │  └──────────────┘  └─────────────────────┘ │
+│  │  subtasks       │  └──────────────┘  └─────────────────────┘ │
+│  │  task_comments  │                                              │
 │  │  task_files     │                                              │
 │  │  notifications  │                                              │
+│  │  columns        │                                              │
+│  │  labels         │                                              │
 │  └─────────────────┘                                              │
 └──────────────────────────────────────────────────────────────────┘
 ```
@@ -133,26 +138,26 @@ brolab-task/
 
 ### 🔴 CRÍTICAS (impacto de segurança)
 
-| ID | Dívida | Localização | Impacto |
-|----|--------|-------------|---------|
-| DT-001 | Senhas em plaintext em `team_members.password` | `app/api/auth/login/route.ts` | Comprometimento total de credenciais |
-| DT-002 | Sem autenticação/autorização nas API Routes | Todos os endpoints | Qualquer request HTTP tem acesso irrestrito ao banco |
-| DT-003 | Sem rate limiting no endpoint de login | `app/api/auth/login/route.ts` | Força bruta sem limitação |
+| ID | Dívida | Localização | Status |
+|----|--------|-------------|--------|
+| DT-001 | Senhas em plaintext em `team_members.password` | `app/api/auth/login/route.ts` + `users/route.ts` | ✅ CORRIGIDO (bcryptjs) |
+| DT-002 | Sem autenticação/autorização nas API Routes | `middleware.ts` criado | ✅ CORRIGIDO |
+| DT-003 | Sem rate limiting no endpoint de login | `app/api/auth/login/route.ts` | ⏳ Pendente |
 
-### 🔴 ALTAS (funcionalidades quebradas)
+### 🔴 ALTAS (funcionalidades quebradas) — ✅ TODAS CORRIGIDAS
 
-| ID | Dívida | Localização | Impacto |
-|----|--------|-------------|---------|
-| DT-004 | `PATCH /api/users` não implementado | `app/api/users/route.ts` | Edição de perfil sempre falha (405) |
-| DT-005 | `DELETE /api/users` não implementado | `app/api/users/route.ts` | Deleção de membro sempre falha (405) |
+| ID | Dívida | Localização | Status |
+|----|--------|-------------|--------|
+| DT-004 | `PATCH /api/users` não implementado | `app/api/users/route.ts` | ✅ CORRIGIDO |
+| DT-005 | `DELETE /api/users` não implementado | `app/api/users/route.ts` | ✅ CORRIGIDO |
 
 ### 🟡 MÉDIAS (arquitetura e manutenibilidade)
 
 | ID | Dívida | Localização | Impacto |
 |----|--------|-------------|---------|
 | DT-006 | SPA monolítica ~1960 LOC em um arquivo | `app/page.tsx` | Difícil manutenção, sem lazy loading, bundle grande |
-| DT-007 | Colunas hardcoded — sem persistência | `app/api/columns/route.ts` | Customização de workflow perdida |
-| DT-008 | Labels sem tabela própria (`TEXT[]` em tasks) | `app/api/tasks/route.ts` | Sem rastreabilidade, rename muda cor |
+| DT-007 | Colunas hardcoded — sem persistência | `app/api/columns/route.ts` | ✅ CORRIGIDO (tabela `columns`) |
+| DT-008 | Labels sem tabela própria (`TEXT[]` em tasks) | `app/api/tasks/route.ts` | ✅ CORRIGIDO (tabela `labels` + persistência de cor) |
 | DT-009 | Assignees armazenam nomes (não IDs) | `tasks.assignees TEXT[]` | Sem integridade referencial |
 | DT-010 | `getLabelColor()` duplicado em 2 módulos | `tasks/route.ts`, `labels/route.ts` | Inconsistência potencial |
 | DT-011 | `window.location.reload()` após upload | `app/page.tsx` | UX degradada sem motivo arquitetural |
