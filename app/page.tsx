@@ -1315,6 +1315,7 @@ function SortableTaskCard({
   onMoveVertical,
   onDelete,
   onEdit,
+  onCancel,
 }: {
   task: Task
   columnIndex: number
@@ -1755,6 +1756,7 @@ function KanbanBoard({
   onMarkNotificationRead,
   onClearAllNotifications,
   refreshData,
+  onReorderColumns,
 }: {
   currentUser: TeamMember
   team: TeamMember[]
@@ -1775,6 +1777,7 @@ function KanbanBoard({
   onMarkNotificationRead: (id: string) => void
   onClearAllNotifications: () => void
   refreshData: () => void
+  onReorderColumns?: (columns: Column[]) => void
 }) {
   const [showTeamModal, setShowTeamModal] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
@@ -1890,7 +1893,7 @@ function KanbanBoard({
     const reordered = [...columns]
     ;[reordered[idx], reordered[targetIdx]] = [reordered[targetIdx], reordered[idx]]
     reordered.forEach((c, i) => { c.position = i })
-    setColumns(reordered)
+    if (onReorderColumns) onReorderColumns(reordered)
     fetch(`/api/columns/reorder`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -2167,16 +2170,16 @@ export default function BroLabTask() {
         const meRes = await fetch("/api/auth/me")
         if (meRes.ok) {
           const meData = await meRes.json()
-          setCurrentUser(meData.user)
+          if (meData.user) {
+            setCurrentUser(meData.user)
+            setLoadingMessage("CONNECTING_TO_SUPABASE...")
+            await fetchData()
+            setLoadingMessage("SYSTEM_READY")
+            setIsLoading(false)
+            return
+          }
         }
       } catch { /* no session */ }
-      if (!currentUser) {
-        setIsLoading(false)
-        return
-      }
-      setLoadingMessage("CONNECTING_TO_SUPABASE...")
-      await fetchData()
-      setLoadingMessage("SYSTEM_READY")
       setIsLoading(false)
     }
     init()
@@ -2234,6 +2237,7 @@ export default function BroLabTask() {
       throw new Error(data.error || "ERRO: FALHA_NO_LOGIN")
     }
     setCurrentUser(data.user)
+    await fetchData()
   }
 
   // Logout handler
@@ -2469,6 +2473,7 @@ export default function BroLabTask() {
         onMarkNotificationRead={handleMarkNotificationRead}
         onClearAllNotifications={handleClearAllNotifications}
         refreshData={fetchData}
+        onReorderColumns={(cols) => setColumns(cols)}
       />
       <ToastContainer />
     </>

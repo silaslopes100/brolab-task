@@ -3,8 +3,6 @@ import { NextRequest, NextResponse } from "next/server"
 import bcrypt from "bcryptjs"
 import { signAccessToken, signRefreshToken } from "@/lib/auth/jwt"
 
-const BCRYPT_PREFIX = "$2a$"
-
 export async function POST(request: NextRequest) {
   try {
     const { email, password } = await request.json()
@@ -52,7 +50,7 @@ export async function POST(request: NextRequest) {
 
     let passwordValid = false
 
-    if (user.password.startsWith(BCRYPT_PREFIX)) {
+    if (user.password.startsWith("$2a$") || user.password.startsWith("$2b$")) {
       passwordValid = await bcrypt.compare(password, user.password)
     } else if (user.password === password) {
       passwordValid = true
