@@ -11,7 +11,7 @@
   "completed": ["reconhecimento", "escavacao", "interpretacao_detective", "interpretacao_architect", "geracao", "revisao"],
   "pending": [],
   "engines": ["copilot"],
-  "agents": ["reversa", "reversa-scout", "reversa-archaeologist", "reversa-detective", "reversa-architect"],
+  "agents": ["reversa", "reversa-scout", "reversa-archaeologist", "reversa-detective", "reversa-architect", "reversa-reviewer", "reversa-data-master", "reversa-curator"],
   "checkpoints": {
     "scout": {
       "completed_at": "2026-05-29T00:00:00Z",
