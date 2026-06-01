@@ -2339,16 +2339,15 @@ export default function BroLabTask() {
   }
 
   // Add task
-  const handleAddTask = async (columnId: string, task: { title: string; description: string; assignees: string[] }) => {
+  const handleAddTask = async (_columnId: string, task: { title: string; description: string; assignees: string[] }) => {
     try {
-      const column = columns.find((c) => c.id === columnId)
+      const backlog = columns.find((c) => c.position === 0)
       await fetch("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...task,
-          columnPosition: column?.position ?? 0,
-          position: column?.tasks.length || 0,
+          position: backlog?.tasks.length || 0,
         }),
       })
       await fetchData()

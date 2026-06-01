@@ -163,7 +163,7 @@ export async function POST(request: NextRequest) {
     if (parsed.error) {
       return NextResponse.json({ error: parsed.error }, { status: 400 })
     }
-    const { title, description, columnPosition, position, assignees, labels } = parsed.data!
+    const { title, description, position, assignees, labels } = parsed.data!
     const supabase = createAdminClient()
 
     if (!supabase) {
@@ -178,7 +178,7 @@ export async function POST(request: NextRequest) {
       .insert({
         title,
         description: description || "",
-        column_position: columnPosition ?? 0,
+        column_position: 0, // always create in BACKLOG
         position: position || 0,
         assignees: assignees || [],
         labels: labels
