@@ -1,18 +1,32 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { NextRequest, NextResponse } from "next/server"
-
-const BCRYPT_PREFIX = "$2a$"
+import bcrypt from "bcryptjs"
+import { signAccessToken, signRefreshToken } from "@/lib/auth/jwt"
+import { LoginSchema, validate } from "@/lib/validation"
+import { checkRateLimit } from "@/lib/rate-limit"
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, password } = await request.json()
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown"
+    const rateCheck = checkRateLimit(`login:${ip}`)
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        { error: "ERRO: MUITAS_TENTATIVAS_AGUARDE" },
+        { status: 429, headers: { "Retry-After": String(Math.ceil(rateCheck.resetInMs / 1000)) } },
+      )
+    }
+
+    const body = await request.json()
+    const parsed = validate(LoginSchema, body)
+    if (parsed.error) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 })
+    }
+    const { email, password } = parsed.data!
     const supabase = createAdminClient()
 
     if (!supabase) {
       return NextResponse.json(
-        {
-          error: "ERRO: SUPABASE_SERVICE_ROLE_KEY_NAO_CONFIGURADA",
-        },
+        { error: "ERRO: SUPABASE_SERVICE_ROLE_KEY_NAO_CONFIGURADA" },
         { status: 500 },
       )
     }
@@ -50,12 +64,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-<<<<<<< HEAD
-    if (user.password !== password) {
-=======
     let passwordValid = false
 
-    if (user.password.startsWith(BCRYPT_PREFIX)) {
+    if (user.password.startsWith("$2a$") || user.password.startsWith("$2b$")) {
       passwordValid = await bcrypt.compare(password, user.password)
     } else if (user.password === password) {
       passwordValid = true
@@ -64,24 +75,45 @@ export async function POST(request: NextRequest) {
     }
 
     if (!passwordValid) {
->>>>>>> parent of 6786381 (renomear função de middleware para proxy e ajustar lógica de autenticação)
       return NextResponse.json(
         { error: "ERRO: CREDENCIAIS_INVÁLIDAS" },
         { status: 401 },
       )
     }
 
-    return NextResponse.json({
-      user: {
-        id: user.id,
-        name: user.name,
-        username: user.username,
-        email: user.email,
-        role: user.role,
-        role_id: user.role_id,
-        isAdmin: user.role === "ADMIN_TOTAL" || user.role === "ADMIN",
-      },
+    const jwtPayload = { userId: user.id, username: user.username, role: user.role }
+    const accessToken = signAccessToken(jwtPayload)
+    const refreshToken = signRefreshToken(jwtPayload)
+
+    const userData = {
+      id: user.id,
+      name: user.name,
+      username: user.username,
+      email: user.email,
+      role: user.role,
+      role_id: user.role_id,
+      isAdmin: user.role === "ADMIN_TOTAL" || user.role === "ADMIN",
+    }
+
+    const response = NextResponse.json({ user: userData, accessToken })
+
+    response.cookies.set("refresh_token", refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/api/auth",
+      maxAge: 60 * 60 * 24 * 7,
     })
+
+    response.cookies.set("access_token", accessToken, {
+      httpOnly: false,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 15,
+    })
+
+    return response
   } catch {
     return NextResponse.json(
       { error: "ERRO: FALHA_NO_SERVIDOR" },

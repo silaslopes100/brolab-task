@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 import { NextRequest, NextResponse } from "next/server"
+import { CreateTaskSchema, UpdateTaskSchema, validate } from "@/lib/validation"
 
 const BUCKET_NAME = "task-files"
 
@@ -22,25 +23,50 @@ function getLabelColor(name: string): string {
   return LABEL_COLORS[Math.abs(hash) % LABEL_COLORS.length]
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const supabase = createAdminClient() ?? (await createClient())
 
-    const { data: tasks, error } = await supabase
-      .from("tasks")
-      .select("*")
-      .order("position", { ascending: true })
+    const { searchParams } = new URL(request.url)
+    const pageParam = searchParams.get("page")
+    const pageSizeParam = searchParams.get("pageSize")
+    const page = pageParam ? Math.max(1, parseInt(pageParam, 10) || 1) : 1
+    const pageSize = pageSizeParam ? Math.min(100, Math.max(1, parseInt(pageSizeParam, 10) || 50)) : 0
+    const hasPagination = pageParam !== null
 
-    if (error) throw error
+    const [{ count: totalTasks }, tasksResult] = await Promise.all([
+      hasPagination
+        ? supabase.from("tasks").select("*", { count: "exact", head: true })
+        : Promise.resolve({ count: null, error: null }),
+      hasPagination
+        ? supabase.from("tasks").select("*").order("position", { ascending: true }).range((page - 1) * pageSize, page * pageSize - 1)
+        : supabase.from("tasks").select("*").order("position", { ascending: true }),
+    ])
 
-    const { data: comments, error: commentsError } = await supabase
-      .from("task_comments")
-      .select("*")
-      .order("created_at", { ascending: true })
+    const { data: tasks, error: tasksError } = tasksResult
+    if (tasksError) throw tasksError
 
+    const taskIds = (tasks || []).map((t) => t.id)
+
+    const [commentsResult, taskFilesResult, subtasksResult] = taskIds.length > 0 ? await Promise.all([
+      supabase.from("task_comments").select("*").in("task_id", taskIds).order("created_at", { ascending: true }),
+      supabase.from("task_files").select("*").in("task_id", taskIds).order("created_at", { ascending: true }),
+      supabase.from("subtasks").select("id, task_id, estimated_hours, time_spent, timer_started_at, status").in("task_id", taskIds),
+    ]) : [
+      { data: null, error: null },
+      { data: null, error: null },
+      { data: null, error: null },
+    ]
+
+    const { data: comments, error: commentsError } = commentsResult
     if (commentsError) throw commentsError
 
-    const commentsByTaskId: Record<string, typeof comments> = {}
+    const { data: taskFiles, error: filesError } = taskFilesResult
+    if (filesError) throw filesError
+
+    const { data: allSubtasks } = subtasksResult
+
+    const commentsByTaskId: Record<string, any[]> = {}
     if (comments) {
       for (const c of comments) {
         if (!commentsByTaskId[c.task_id]) commentsByTaskId[c.task_id] = []
@@ -48,14 +74,7 @@ export async function GET() {
       }
     }
 
-    const { data: taskFiles, error: filesError } = await supabase
-      .from("task_files")
-      .select("*")
-      .order("created_at", { ascending: true })
-
-    if (filesError) throw filesError
-
-    const filesByTaskId: Record<string, typeof taskFiles> = {}
+    const filesByTaskId: Record<string, any[]> = {}
     if (taskFiles) {
       for (const f of taskFiles) {
         if (!filesByTaskId[f.task_id]) filesByTaskId[f.task_id] = []
@@ -63,7 +82,26 @@ export async function GET() {
       }
     }
 
+    const subtaskAggByTaskId: Record<string, { count: number; totalEstimated: number; totalTimeSpent: number }> = {}
+    if (allSubtasks) {
+      for (const st of allSubtasks) {
+        if (!subtaskAggByTaskId[st.task_id]) {
+          subtaskAggByTaskId[st.task_id] = { count: 0, totalEstimated: 0, totalTimeSpent: 0 }
+        }
+        const agg = subtaskAggByTaskId[st.task_id]
+        agg.count++
+        agg.totalEstimated += st.estimated_hours || 0
+        const now = Date.now()
+        const startedAt = st.timer_started_at ? new Date(st.timer_started_at).getTime() : null
+        const liveTime = startedAt
+          ? (st.time_spent || 0) + (now - startedAt) / 1000
+          : (st.time_spent || 0)
+        agg.totalTimeSpent += Math.round(liveTime)
+      }
+    }
+
     const formattedTasks = (tasks || []).map((task) => {
+      const subtaskAgg = subtaskAggByTaskId[task.id] || { count: 0, totalEstimated: 0, totalTimeSpent: 0 }
       const files = (filesByTaskId[task.id] || []).map((f) => {
         const { data: urlData } = supabase.storage
           .from(BUCKET_NAME)
@@ -81,15 +119,17 @@ export async function GET() {
         id: task.id,
         title: task.title,
         description: task.description || "",
-        columnId: task.status,
+        columnPosition: task.column_position,
         position: task.position,
         createdAt: task.created_at,
         assignees: task.assignees || [],
-        labels: (task.labels || []).map((name: string) => ({
-          id: name,
-          name,
-          color: getLabelColor(name),
-        })),
+        labels: (task.labels || []).map((raw: string) => {
+          const [name, color] = raw.split('||')
+          return { id: name, name, color: color || getLabelColor(name) }
+        }),
+        subtaskCount: subtaskAgg.count,
+        totalEstimatedHours: subtaskAgg.totalEstimated,
+        totalTimeSpent: subtaskAgg.totalTimeSpent,
         comments: (commentsByTaskId[task.id] || []).map((c) => ({
           id: c.id,
           content: c.content,
@@ -99,12 +139,14 @@ export async function GET() {
           mentions: [],
         })),
         files,
-        is_completed: task.is_completed ?? false,
-        is_archived: task.is_archived ?? false,
       }
     })
 
-    return NextResponse.json({ tasks: formattedTasks })
+    const response: Record<string, unknown> = { tasks: formattedTasks }
+    if (hasPagination) {
+      response.pagination = { page, pageSize, total: totalTasks || 0, totalPages: Math.ceil((totalTasks || 0) / pageSize) }
+    }
+    return NextResponse.json(response)
   } catch (err) {
     console.error("Error fetching tasks:", err)
     return NextResponse.json(
@@ -116,8 +158,12 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { title, description, columnId, position, assignees, labels } =
-      await request.json()
+    const body = await request.json()
+    const parsed = validate(CreateTaskSchema, body)
+    if (parsed.error) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 })
+    }
+    const { title, description, position, assignees, labels } = parsed.data!
     const supabase = createAdminClient()
 
     if (!supabase) {
@@ -132,11 +178,11 @@ export async function POST(request: NextRequest) {
       .insert({
         title,
         description: description || "",
-        status: columnId || "BACKLOG",
+        column_position: 0, // always create in BACKLOG
         position: position || 0,
         assignees: assignees || [],
         labels: labels
-          ? labels.map((l: { name: string }) => l.name)
+          ? labels.map((l: { name: string; color?: string }) => `${l.name}||${l.color || getLabelColor(l.name)}`)
           : [],
       })
       .select()
@@ -144,24 +190,41 @@ export async function POST(request: NextRequest) {
 
     if (taskError) throw taskError
 
+    // Notify all users about the new task
+    const { data: allUsers, error: usersError } = await supabase
+      .from('team_members')
+      .select('id')
+    if (!usersError && allUsers && allUsers.length > 0) {
+      const notifInserts = allUsers.map((u) => ({
+        user_id: u.id,
+        type: 'task_created',
+        message: `Nova tarefa criada: ${task.title}`,
+        task_id: task.id,
+        task_title: task.title,
+        from_user: '',
+        read: false,
+      }))
+      await supabase.from('notifications').insert(notifInserts)
+    }
+
     return NextResponse.json({
       task: {
         id: task.id,
         title: task.title,
         description: task.description,
-        columnId: task.status,
+        columnPosition: task.column_position,
         position: task.position,
         createdAt: task.created_at,
         assignees: task.assignees || [],
-        labels: (task.labels || []).map((name: string) => ({
-          id: name,
-          name,
-          color: getLabelColor(name),
-        })),
+        labels: (task.labels || []).map((raw: string) => {
+          const [name, color] = raw.split('||')
+          return { id: name, name, color: color || getLabelColor(name) }
+        }),
+        subtaskCount: 0,
+        totalEstimatedHours: 0,
+        totalTimeSpent: 0,
         comments: [],
         files: [],
-        is_completed: task.is_completed ?? false,
-        is_archived: task.is_archived ?? false,
       },
     })
   } catch (err) {
@@ -176,7 +239,11 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json()
-    const { id, title, description, columnId, position, assignees, labels, is_completed, is_archived } = body
+    const parsed = validate(UpdateTaskSchema, body)
+    if (parsed.error) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 })
+    }
+    const { id, title, description, columnPosition, position, assignees, labels } = parsed.data!
     const supabase = createAdminClient()
 
     if (!supabase) {
@@ -189,13 +256,11 @@ export async function PATCH(request: NextRequest) {
     const updates: Record<string, unknown> = {}
     if (title !== undefined) updates.title = title
     if (description !== undefined) updates.description = description
-    if (columnId !== undefined) updates.status = columnId
+    if (columnPosition !== undefined) updates.column_position = columnPosition
     if (position !== undefined) updates.position = position
     if (assignees !== undefined) updates.assignees = assignees
     if (labels !== undefined)
-      updates.labels = labels.map((l: { name: string }) => l.name)
-    if (is_completed !== undefined) updates.is_completed = is_completed
-    if (is_archived !== undefined) updates.is_archived = is_archived
+      updates.labels = labels.map((l: { name: string; color?: string }) => `${l.name}||${l.color || getLabelColor(l.name)}`)
 
     if (Object.keys(updates).length > 0) {
       const { error: taskError } = await supabase
@@ -204,6 +269,35 @@ export async function PATCH(request: NextRequest) {
         .eq("id", id)
 
       if (taskError) throw taskError
+    }
+
+    // Notify all users about task update
+    // Determine task title for notification message
+    let taskTitle = ''
+    if (title) {
+      taskTitle = title as string
+    } else {
+      const { data: taskData, error: taskFetchError } = await supabase
+        .from('tasks')
+        .select('title')
+        .eq('id', id)
+        .single()
+      taskTitle = taskData?.title || ''
+    }
+    const { data: allUsers, error: usersError } = await supabase
+      .from('team_members')
+      .select('id')
+    if (!usersError && allUsers && allUsers.length > 0) {
+      const notifInserts = allUsers.map((u) => ({
+        user_id: u.id,
+        type: 'task_updated',
+        message: `Tarefa atualizada: ${taskTitle}`,
+        task_id: id,
+        task_title: taskTitle,
+        from_user: '',
+        read: false,
+      }))
+      await supabase.from('notifications').insert(notifInserts)
     }
 
     return NextResponse.json({ success: true })
@@ -233,9 +327,34 @@ export async function DELETE(request: NextRequest) {
         { status: 500 },
       )
     }
+    // Fetch task title before deletion for notification
+    const { data: taskData, error: fetchError } = await supabase
+      .from('tasks')
+      .select('title')
+      .eq('id', id)
+      .single()
+    const taskTitle = taskData?.title || ''
+
     const { error } = await supabase.from("tasks").delete().eq("id", id)
 
     if (error) throw error
+
+    // Notify all users about task deletion
+    const { data: allUsers, error: usersError } = await supabase
+      .from('team_members')
+      .select('id')
+    if (!usersError && allUsers && allUsers.length > 0) {
+      const notifInserts = allUsers.map((u) => ({
+        user_id: u.id,
+        type: 'task_deleted',
+        message: `Tarefa excluída: ${taskTitle}`,
+        task_id: id,
+        task_title: taskTitle,
+        from_user: '',
+        read: false,
+      }))
+      await supabase.from('notifications').insert(notifInserts)
+    }
 
     return NextResponse.json({ success: true })
   } catch {

@@ -1,6 +1,8 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 import { NextRequest, NextResponse } from "next/server"
+import bcrypt from "bcryptjs"
+import { CreateUserSchema, UpdateUserSchema, validate } from "@/lib/validation"
 
 export async function GET() {
   try {
@@ -33,7 +35,12 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { name, username, email, password, role } = await request.json()
+    const body = await request.json()
+    const parsed = validate(CreateUserSchema, body)
+    if (parsed.error) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 })
+    }
+    const { name, username, email, password, role } = parsed.data!
     const supabase = createAdminClient()
 
     if (!supabase) {
@@ -45,13 +52,15 @@ export async function POST(request: NextRequest) {
 
     const finalUsername = username.startsWith("@") ? username : `@${username}`
 
+    const hashedPassword = await bcrypt.hash(password, 10)
+
     const { data: user, error } = await supabase
       .from("team_members")
       .insert({
         name: name.toUpperCase().replace(/\s+/g, "_"),
         username: finalUsername.toLowerCase(),
         email: email.toLowerCase(),
-        password,
+        password: hashedPassword,
         role: role?.toUpperCase().replace(/\s+/g, "_") || "COLLABORATOR",
       })
       .select()
@@ -110,7 +119,12 @@ export async function DELETE(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const { id, name, email, password, role } = await request.json()
+    const body = await request.json()
+    const parsed = validate(UpdateUserSchema, body)
+    if (parsed.error) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 })
+    }
+    const { id, name, username, email, password, role } = parsed.data!
     const supabase = createAdminClient()
 
     if (!supabase) {
@@ -122,8 +136,9 @@ export async function PATCH(request: NextRequest) {
 
     const updates: Record<string, string> = {}
     if (name) updates.name = name.toUpperCase().replace(/\s+/g, "_")
+    if (username) updates.username = username.startsWith("@") ? username.toLowerCase() : `@${username.toLowerCase()}`
     if (email) updates.email = email.toLowerCase()
-    if (password) updates.password = password
+    if (password) updates.password = await bcrypt.hash(password, 10)
     if (role) updates.role = role.toUpperCase().replace(/\s+/g, "_")
 
     const { data: user, error } = await supabase

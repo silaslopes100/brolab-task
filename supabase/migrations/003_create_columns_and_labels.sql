@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS columns (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL UNIQUE,
+  position INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+INSERT INTO columns (name, position) VALUES
+  ('BACKLOG', 0),
+  ('FAZENDO', 1),
+  ('ALTERAÇÕES', 2),
+  ('APROVADO', 3),
+  ('FEITO', 4)
+ON CONFLICT (name) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS labels (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL UNIQUE,
+  color TEXT NOT NULL DEFAULT '#6B7280',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);

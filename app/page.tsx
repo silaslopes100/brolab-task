@@ -1,6 +1,16 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
+import { createClient } from "@/lib/supabase/client"
+import { showToast, ToastContainer } from "@/components/toast-notification"
+import {
+  DndContext, DragOverlay, closestCorners, KeyboardSensor,
+  PointerSensor, useSensor, useSensors, type DragStartEvent, type DragEndEvent, type DragOverEvent,
+} from "@dnd-kit/core"
+import {
+  SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 
 // ==================== TYPES ====================
 interface Label {
@@ -15,7 +25,24 @@ interface Comment {
   authorName: string
   content: string
   createdAt: string
-  mentions: string[]
+  mentions?: string[]
+  subtaskId?: string | null
+}
+
+interface Subtask {
+  id: string
+  taskId: string
+  title: string
+  description: string
+  estimatedHours: number
+  timeSpent: number
+  status: string
+  position: number
+  assignees: string[]
+  comments: Comment[]
+  files: TaskFile[]
+  timerStartedAt: string | null
+  createdAt: string
 }
 
 interface TaskFile {
@@ -31,15 +58,16 @@ interface Task {
   id: string
   title: string
   description: string
-  columnId: string
+  columnPosition: number
   position: number
   assignees: string[]
   labels: Label[]
   comments: Comment[]
   files: TaskFile[]
+  subtaskCount?: number
+  totalEstimatedHours?: number
+  totalTimeSpent?: number
   createdAt: string
-  is_completed?: boolean
-  is_archived?: boolean
 }
 
 interface Column {
@@ -70,15 +98,15 @@ interface Notification {
 }
 
 // ==================== LABEL COLORS ====================
-const LABEL_COLORS: Record<string, string> = {
-  Branca: "bg-white text-black",
-  Cinza: "bg-neutral-500 text-white",
-  "Verde Limão": "bg-lime-400 text-black",
-  "Verde Pistache": "bg-emerald-300 text-black",
-  "Laranja Forte": "bg-orange-600 text-white",
-  Vermelho: "bg-red-600 text-white",
-  "Verde Folha": "bg-green-700 text-white",
-};
+const LABEL_COLORS = [
+  { name: "Branca", value: "#FFFFFF" },
+  { name: "Cinza", value: "#6B7280" },
+  { name: "Verde Limão", value: "#84CC16" },
+  { name: "Verde Pistache", value: "#A3E635" },
+  { name: "Laranja Forte", value: "#F97316" },
+  { name: "Vermelho", value: "#EF4444" },
+  { name: "Verde Folha", value: "#22C55E" },
+]
 
 // ==================== DEFAULT COLUMN IDS ====================
 const DEFAULT_COLUMN_NAMES = ["BACKLOG", "FAZENDO", "ALTERAÇÕES", "APROVADO", "FEITO"]
@@ -565,9 +593,18 @@ function TeamAdminModal({
 
 // ==================== LABEL BADGE ====================
 function LabelBadge({ label }: { label: Label }) {
+  const isDark = label.color === "#FFFFFF" || label.color === "#A3E635" || label.color === "#84CC16"
   return (
-    <span className={`px-2 py-0.5 text-xs font-bold ${LABEL_COLORS[label.name] || 'bg-gray-500 text-white'}`}>{label.name}</span>
-  );
+    <span
+      className="px-2 py-0.5 text-xs font-bold"
+      style={{
+        backgroundColor: label.color,
+        color: isDark ? "#000000" : "#FFFFFF",
+      }}
+    >
+      {label.name}
+    </span>
+  )
 }
 
 // ==================== LABEL MANAGER ====================
@@ -575,21 +612,14 @@ function LabelManager({
   labels,
   onAdd,
   onRemove,
-  allLabels,
 }: {
   labels: Label[]
   onAdd: (label: Label) => void
   onRemove: (id: string) => void
-  allLabels: Label[]
 }) {
   const [showForm, setShowForm] = useState(false)
   const [newName, setNewName] = useState("")
-  const [selectedColor, setSelectedColor] = useState(Object.values(LABEL_COLORS)[0])
-  const [showExisting, setShowExisting] = useState(false)
-
-  const uniqueExistingLabels = allLabels.filter(
-    (al) => !labels.some((l) => l.name === al.name)
-  )
+  const [selectedColor, setSelectedColor] = useState(LABEL_COLORS[0].value)
 
   const handleAdd = () => {
     if (newName.trim()) {
@@ -599,14 +629,8 @@ function LabelManager({
         color: selectedColor,
       })
       setNewName("")
-      setSelectedColor(Object.values(LABEL_COLORS)[0])
+      setSelectedColor(LABEL_COLORS[0].value)
       setShowForm(false)
-    }
-  }
-
-  const handleAddExisting = (label: Label) => {
-    if (!labels.some((l) => l.name === label.name)) {
-      onAdd({ ...label, id: Date.now().toString() })
     }
   }
 
@@ -628,37 +652,12 @@ function LabelManager({
       </div>
 
       {!showForm ? (
-        <div className="space-y-2">
-          <button
-            onClick={() => { setShowForm(true); setShowExisting(false); }}
-            className="w-full h-10 border border-dashed border-[#262626] text-[#00FF66]/50 text-xs hover:border-[#00FF66] hover:text-[#00FF66] transition-colors"
-          >
-            [ + ADD_LABEL ]
-          </button>
-          {uniqueExistingLabels.length > 0 && (
-            <>
-              <button
-                onClick={() => setShowExisting(!showExisting)}
-                className="w-full h-8 border border-dashed border-[#262626] text-[#00FF66]/30 text-xs hover:border-[#00FF66] hover:text-[#00FF66] transition-colors"
-              >
-                {showExisting ? "[ - OCULTAR_EXISTENTES ]" : `[ CARREGAR_EXISTENTES (${uniqueExistingLabels.length}) ]`}
-              </button>
-              {showExisting && (
-                <div className="flex flex-wrap gap-2 p-2 border border-[#262626]">
-                  {uniqueExistingLabels.map((label) => (
-                    <button
-                      key={label.id}
-                      onClick={() => handleAddExisting(label)}
-                      className="cursor-pointer hover:opacity-80 transition-opacity"
-                    >
-                      <LabelBadge label={label} />
-                    </button>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-        </div>
+        <button
+          onClick={() => setShowForm(true)}
+          className="w-full h-10 border border-dashed border-[#262626] text-[#00FF66]/50 text-xs hover:border-[#00FF66] hover:text-[#00FF66] transition-colors"
+        >
+          [ + ADD_LABEL ]
+        </button>
       ) : (
         <div className="space-y-3 border border-[#00FF66] p-3">
           <input
@@ -669,16 +668,19 @@ function LabelManager({
             className="w-full h-10 px-3 bg-[#1A1A1A] border border-[#262626] text-white text-sm placeholder:text-[#00FF66]/30 focus:border-[#00FF66] focus:outline-none"
           />
           <div className="flex flex-wrap gap-2">
-{Object.entries(LABEL_COLORS).map(([name, className]) => (
-  <button
-    key={name}
-    onClick={() => setSelectedColor(className)}
-    className={`w-8 h-8 border-2 transition-colors ${
-      selectedColor === className ? "border-[#00FF66]" : "border-transparent"
-    } ${className}`}
-    title={name}
-  />
-))}
+            {LABEL_COLORS.map((color) => (
+              <button
+                key={color.value}
+                onClick={() => setSelectedColor(color.value)}
+                className={`w-8 h-8 border-2 transition-colors ${
+                  selectedColor === color.value
+                    ? "border-[#00FF66]"
+                    : "border-transparent"
+                }`}
+                style={{ backgroundColor: color.value }}
+                title={color.name}
+              />
+            ))}
           </div>
           <div className="flex gap-2">
             <button
@@ -718,6 +720,17 @@ function MentionInput({
   const [showMentions, setShowMentions] = useState(false)
   const [mentionFilter, setMentionFilter] = useState("")
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setShowMentions(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = e.target.value
@@ -755,7 +768,7 @@ function MentionInput({
   )
 
   return (
-    <div className="relative">
+    <div ref={containerRef} className="relative">
       <textarea
         ref={inputRef}
         value={value}
@@ -789,6 +802,156 @@ function MentionInput({
   )
 }
 
+// ==================== SUBTASK ROW ====================
+function SubtaskRow({
+  subtask,
+  onUpdateStatus,
+  onAddComment,
+  onUploadComplete,
+  currentUser,
+  team,
+}: {
+  subtask: Subtask
+  onUpdateStatus: (id: string, newStatus: string) => void
+  onAddComment: (subtaskId: string, content: string) => void
+  onUploadComplete?: () => void
+  currentUser: TeamMember
+  team: TeamMember[]
+}) {
+  const [showComments, setShowComments] = useState(false)
+  const [newComment, setNewComment] = useState("")
+  const [liveTime, setLiveTime] = useState(subtask.timeSpent)
+
+  useEffect(() => {
+    if (!subtask.timerStartedAt) {
+      setLiveTime(subtask.timeSpent)
+      return
+    }
+    const interval = setInterval(() => {
+      const elapsed = (Date.now() - new Date(subtask.timerStartedAt).getTime()) / 1000
+      setLiveTime(subtask.timeSpent + Math.round(elapsed))
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [subtask.timerStartedAt, subtask.timeSpent])
+
+  const STATUS_ORDER = ["BACKLOG", "FAZENDO", "ALTERAÇÕES", "APROVADO", "FEITO"]
+  const currentIndex = STATUS_ORDER.indexOf(subtask.status)
+  const isTimerRunning = !!subtask.timerStartedAt
+
+  const formatTime = (seconds: number) => {
+    const h = Math.floor(seconds / 3600)
+    const m = Math.floor((seconds % 3600) / 60)
+    const s = seconds % 60
+    return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`
+  }
+
+  const handleAddComment = async () => {
+    if (!newComment.trim()) return
+    await onAddComment(subtask.id, newComment.trim())
+    setNewComment("")
+  }
+
+  const compareBar = () => {
+    const est = subtask.estimatedHours * 3600
+    if (est === 0) return null
+    const pct = Math.min((liveTime / est) * 100, 100)
+    const color = liveTime > est ? "#FF3333" : "#00FF66"
+    return (
+      <div className="mt-2">
+        <div className="flex justify-between text-[10px] text-[#00FF66]/50 mb-1">
+          <span>Estimado: {subtask.estimatedHours}h</span>
+          <span>Real: {formatTime(liveTime)}</span>
+        </div>
+        <div className="w-full h-1.5 bg-[#262626]">
+          <div
+            className="h-full transition-all"
+            style={{ width: `${pct}%`, backgroundColor: color }}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="border border-[#262626] bg-[#1A1A1A] p-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="text-white text-sm font-bold break-words">{subtask.title}</div>
+          {subtask.description && (
+            <div className="text-white/60 text-xs mt-1 break-words">{subtask.description}</div>
+          )}
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
+            <span className={`text-xs px-1.5 py-0.5 border ${isTimerRunning ? "border-[#00FF66] text-[#00FF66] animate-pulse" : "border-[#262626] text-[#00FF66]/70"}`}>
+              {isTimerRunning ? "▶ CRONOMETRO" : subtask.status}
+            </span>
+            <span className="text-xs text-[#00FF66]/70">{formatTime(liveTime)}</span>
+            {subtask.estimatedHours > 0 && (
+              <span className="text-xs text-[#00FF66]/50">EST: {subtask.estimatedHours}h</span>
+            )}
+          </div>
+          {compareBar()}
+          <div className="flex gap-1 mt-2 flex-wrap">
+            {currentIndex > 0 && (
+              <button onClick={() => onUpdateStatus(subtask.id, STATUS_ORDER[currentIndex - 1])}
+                className="h-6 px-1.5 border border-[#262626] text-[#00FF66] text-[10px] hover:border-[#00FF66] transition-colors">←</button>
+            )}
+            {currentIndex < STATUS_ORDER.length - 1 && (
+              <button onClick={() => onUpdateStatus(subtask.id, STATUS_ORDER[currentIndex + 1])}
+                className="h-6 px-1.5 border border-[#262626] text-[#00FF66] text-[10px] hover:border-[#00FF66] transition-colors">→</button>
+            )}
+            <button onClick={() => setShowComments(!showComments)}
+              className="h-6 px-1.5 border border-[#262626] text-[#00FF66]/50 text-[10px] hover:border-[#00FF66] transition-colors">
+              [{subtask.comments.length}]
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {showComments && (
+        <div className="mt-3 border-t border-[#262626] pt-3 space-y-2">
+          {subtask.comments.length === 0 && (
+            <div className="text-[#00FF66]/50 text-xs">NO_COMMENTS</div>
+          )}
+          {subtask.comments.map((c) => (
+            <div key={c.id} className="border border-[#262626] bg-black p-2">
+              <div className="text-[#00FF66] text-[10px] font-bold">{c.authorName}</div>
+              <div className="text-white text-xs mt-1">{c.content}</div>
+            </div>
+          ))}
+          {subtask.files.length > 0 && (
+            <div className="space-y-1">
+              <div className="text-[#00FF66]/50 text-[10px]">ARQUIVOS:</div>
+              {subtask.files.map((f) => (
+                <a key={f.id} href={f.url} target="_blank" rel="noopener noreferrer"
+                  className="block border border-[#262626] bg-black p-1.5 text-[#00FF66] text-[10px] hover:underline">
+                  {f.name} ({(f.size / 1024).toFixed(1)} KB)
+                </a>
+              ))}
+            </div>
+          )}
+          <MentionInput value={newComment} onChange={setNewComment}
+            onSubmit={handleAddComment} team={team} placeholder="Comentário (use @ para mencionar)..." />
+          <label className="flex items-center gap-2 cursor-pointer p-1.5 border border-dashed border-[#262626] hover:border-[#00FF66] transition-colors">
+            <span className="text-[#00FF66]/50 text-[10px]">[ UPLOAD_FILE ]</span>
+            <input type="file" className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0]
+                if (!file) return
+                const formData = new FormData()
+                formData.append("file", file)
+                formData.append("subtaskId", subtask.id)
+                try {
+                  const res = await fetch("/api/upload", { method: "POST", body: formData })
+                  if (res.ok) { if (onUploadComplete) onUploadComplete() }
+                } catch (err) { console.error("Upload failed:", err) }
+              }} />
+          </label>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ==================== TASK EDIT MODAL ====================
 function TaskEditModal({
   task,
@@ -797,9 +960,8 @@ function TaskEditModal({
   onClose,
   onSave,
   onAddComment,
-  onComplete,
-  onArchive,
-  allLabels,
+  onEditComment,
+  onUploadComplete,
 }: {
   task: Task
   team: TeamMember[]
@@ -807,15 +969,30 @@ function TaskEditModal({
   onClose: () => void
   onSave: (updates: Partial<Task>) => void
   onAddComment: (content: string, mentions: string[]) => void
-  onComplete?: () => void
-  onArchive?: () => void
-  allLabels: Label[]
+  onEditComment?: (commentId: string, content: string) => void
+  onUploadComplete?: () => void
 }) {
   const [title, setTitle] = useState(task.title)
   const [description, setDescription] = useState(task.description)
   const [assignees, setAssignees] = useState<string[]>(task.assignees)
   const [labels, setLabels] = useState<Label[]>(task.labels)
+  const [subtasks, setSubtasks] = useState<Subtask[]>([])
   const [newComment, setNewComment] = useState("")
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
+  const [editingCommentContent, setEditingCommentContent] = useState("")
+  const [showNewSubtask, setShowNewSubtask] = useState(false)
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState("")
+  const [newSubtaskEstHours, setNewSubtaskEstHours] = useState("")
+
+  useEffect(() => {
+    fetch(`/api/subtasks?taskId=${task.id}`)
+      .then((r) => r.json())
+      .then((d) => setSubtasks(d.subtasks || []))
+      .catch(() => {})
+  }, [task.id])
+
+  const totalEstimatedHours = subtasks.reduce((s, st) => s + (st.estimatedHours || 0), 0)
+  const totalTimeSpent = subtasks.reduce((s, st) => s + st.timeSpent, 0)
 
   const handleSave = () => {
     onSave({
@@ -837,37 +1014,86 @@ function TaskEditModal({
     }
   }
 
-const toggleAssignee = (name: string) => {
-  if (assignees.includes(name)) {
-    setAssignees(assignees.filter((a) => a !== name))
-  } else {
-    setAssignees([...assignees, name])
-  }
-}
-
-// AI enhancement state and handler
-const [isProcessingAI, setIsProcessingAI] = useState(false);
-const handleAIEnhance = async () => {
-  if (!description.trim()) return;
-  setIsProcessingAI(true);
-  try {
-    const res = await fetch('/api/enhance', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: description }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.enhanced) {
-        setDescription(data.enhanced);
-      }
+  const handleEditComment = (commentId: string) => {
+    if (editingCommentContent.trim()) {
+      onEditComment?.(commentId, editingCommentContent.trim())
+      setEditingCommentId(null)
+      setEditingCommentContent("")
     }
-  } catch (e) {
-    console.error('AI enhance failed', e);
-  } finally {
-    setIsProcessingAI(false);
   }
-}
+
+  const toggleAssignee = (name: string) => {
+    if (assignees.includes(name)) {
+      setAssignees(assignees.filter((a) => a !== name))
+    } else {
+      setAssignees([...assignees, name])
+    }
+  }
+
+  const handleAddSubtask = async () => {
+    if (!newSubtaskTitle.trim()) return
+    try {
+      await fetch("/api/subtasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          taskId: task.id,
+          title: newSubtaskTitle.trim(),
+          estimatedHours: parseFloat(newSubtaskEstHours) || 0,
+          position: subtasks.length,
+        }),
+      })
+      setNewSubtaskTitle("")
+      setNewSubtaskEstHours("")
+      setShowNewSubtask(false)
+      const res = await fetch(`/api/subtasks?taskId=${task.id}`)
+      const d = await res.json()
+      setSubtasks(d.subtasks || [])
+    } catch (err) {
+      console.error("Error creating subtask:", err)
+    }
+  }
+
+  const handleSubtaskStatusUpdate = async (subtaskId: string, newStatus: string) => {
+    try {
+      await fetch("/api/timer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subtaskId, newStatus }),
+      })
+      const res = await fetch(`/api/subtasks?taskId=${task.id}`)
+      const d = await res.json()
+      setSubtasks(d.subtasks || [])
+    } catch (err) {
+      console.error("Error updating subtask status:", err)
+    }
+  }
+
+  const handleSubtaskComment = async (subtaskId: string, content: string) => {
+    try {
+      await fetch("/api/comments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          taskId: task.id,
+          subtaskId,
+          authorUsername: currentUser.username,
+          content,
+        }),
+      })
+      const res = await fetch(`/api/subtasks?taskId=${task.id}`)
+      const d = await res.json()
+      setSubtasks(d.subtasks || [])
+    } catch (err) {
+      console.error("Error adding subtask comment:", err)
+    }
+  }
+
+  const formatTime = (seconds: number) => {
+    const h = Math.floor(seconds / 3600)
+    const m = Math.floor((seconds % 3600) / 60)
+    return `${h}h ${m}m`
+  }
 
   return (
     <div className="fixed inset-0 bg-black z-50 overflow-y-auto">
@@ -875,34 +1101,20 @@ const handleAIEnhance = async () => {
         <div className="border-2 border-[#00FF66] bg-black max-w-3xl mx-auto">
           <div className="border-b border-[#00FF66] p-4 flex justify-between items-center sticky top-0 bg-black z-10">
             <span className="text-[#00FF66] font-bold">{">"} EDIT_TASK</span>
-<div className="flex gap-2">
-  <button
-    onClick={handleSave}
-    className="text-[#00FF66] hover:bg-[#00FF66] hover:text-black px-3 py-1 border border-[#00FF66] transition-colors text-xs"
-  >
-    [ SAVE ]
-  </button>
-  <button
-    onClick={onClose}
-    className="text-[#FF3333] hover:bg-[#FF3333] hover:text-black px-2 py-1 border border-[#FF3333] transition-colors text-xs"
-  >
-    [ CLOSE ]
-  </button>
-  <button
-    onClick={() => { onComplete?.(); onClose(); }}
-    disabled={!!task.is_completed}
-    className="text-[#00FF66] hover:bg-[#00FF66] hover:text-black px-2 py-1 border border-[#00FF66] transition-colors text-xs disabled:opacity-30"
-  >
-    {task.is_completed ? "[ CONCLUIDO ]" : "[ CONCLUIR TAREFA ]"}
-  </button>
-  <button
-    onClick={() => { onArchive?.(); onClose(); }}
-    disabled={!!task.is_archived}
-    className="text-[#00FF66] hover:bg-[#00FF66] hover:text-black px-2 py-1 border border-[#00FF66] transition-colors text-xs disabled:opacity-30"
-  >
-    {task.is_archived ? "[ ARQUIVADO ]" : "[ ARQUIVAR TAREFA ]"}
-  </button>
-</div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleSave}
+                className="text-[#00FF66] hover:bg-[#00FF66] hover:text-black px-3 py-1 border border-[#00FF66] transition-colors text-xs"
+              >
+                [ SAVE ]
+              </button>
+              <button
+                onClick={onClose}
+                className="text-[#FF3333] hover:bg-[#FF3333] hover:text-black px-2 py-1 border border-[#FF3333] transition-colors text-xs"
+              >
+                [ CLOSE ]
+              </button>
+            </div>
           </div>
 
           <div className="p-4 space-y-6">
@@ -918,19 +1130,12 @@ const handleAIEnhance = async () => {
 
             <div>
               <div className="text-[#00FF66] text-xs mb-2">{">"} DESCRIPTION:</div>
-<textarea
-  value={description}
-  onChange={(e) => setDescription(e.target.value)}
-  rows={4}
-  className="w-full px-3 py-2 bg-[#1A1A1A] border border-[#262626] text-white text-base focus:border-[#00FF66] focus:outline-none resize-none"
-/>
-<button
-  onClick={handleAIEnhance}
-  disabled={isProcessingAI}
-  className="mt-2 w-full h-10 border border-[#00FF66] text-[#00FF66] text-xs hover:bg-[#00FF66] hover:text-black transition-colors disabled:opacity-50"
->
-  {isProcessingAI ? "[ ✨ PROCESSING_AI... ]" : "[ ✨ AI_ENHANCE ]"}
-</button>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={4}
+                className="w-full px-3 py-2 bg-[#1A1A1A] border border-[#262626] text-white text-base focus:border-[#00FF66] focus:outline-none resize-none"
+              />
             </div>
 
             <div>
@@ -956,8 +1161,71 @@ const handleAIEnhance = async () => {
               labels={labels}
               onAdd={(label) => setLabels([...labels, label])}
               onRemove={(id) => setLabels(labels.filter((l) => l.id !== id))}
-              allLabels={allLabels}
             />
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-[#00FF66] text-xs">{">"} SUBTASKS:</div>
+                <div className="text-[#00FF66]/50 text-[10px]">
+                  EST: {totalEstimatedHours}h | REAL: {formatTime(totalTimeSpent)}
+                </div>
+              </div>
+
+              {totalEstimatedHours > 0 && (
+                <div className="mb-3">
+                  <div className="flex justify-between text-[10px] text-[#00FF66]/50 mb-1">
+                    <span>Total Estimado: {totalEstimatedHours}h</span>
+                    <span>Total Real: {formatTime(totalTimeSpent)}</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-[#262626]">
+                    <div
+                      className="h-full bg-[#00FF66] transition-all"
+                      style={{ width: `${Math.min((totalTimeSpent / (totalEstimatedHours * 3600)) * 100, 100)}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2 mb-3">
+                {subtasks.length === 0 && (
+                  <div className="text-[#00FF66]/50 text-xs">NO_SUBTASKS</div>
+                )}
+                {subtasks.map((st) => (
+                  <SubtaskRow
+                    key={st.id}
+                    subtask={st}
+                    onUpdateStatus={handleSubtaskStatusUpdate}
+                    onAddComment={handleSubtaskComment}
+                    onUploadComplete={onUploadComplete}
+                    currentUser={currentUser}
+                    team={team}
+                  />
+                ))}
+              </div>
+
+              {showNewSubtask ? (
+                <div className="border border-[#00FF66] p-3 space-y-2">
+                  <input value={newSubtaskTitle} onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                    placeholder="SUBTASK_TITLE..."
+                    className="w-full h-10 px-3 bg-[#1A1A1A] border border-[#262626] text-white text-sm placeholder:text-[#00FF66]/30 focus:border-[#00FF66] focus:outline-none" />
+                  <input value={newSubtaskEstHours} onChange={(e) => setNewSubtaskEstHours(e.target.value)}
+                    placeholder="ESTIMATED_HOURS (ex: 2.5)"
+                    type="number" step="0.5" min="0"
+                    className="w-full h-10 px-3 bg-[#1A1A1A] border border-[#262626] text-white text-sm placeholder:text-[#00FF66]/30 focus:border-[#00FF66] focus:outline-none" />
+                  <div className="flex gap-2">
+                    <button onClick={handleAddSubtask} disabled={!newSubtaskTitle.trim()}
+                      className="flex-1 h-10 border border-[#00FF66] text-[#00FF66] text-xs hover:bg-[#00FF66] hover:text-black transition-colors disabled:opacity-50">[ ADD ]</button>
+                    <button onClick={() => setShowNewSubtask(false)}
+                      className="h-10 px-3 border border-[#262626] text-[#00FF66]/50 text-xs hover:border-[#00FF66] transition-colors">[ CANCEL ]</button>
+                  </div>
+                </div>
+              ) : (
+                <button onClick={() => setShowNewSubtask(true)}
+                  className="w-full h-10 border border-dashed border-[#262626] text-[#00FF66]/50 text-xs hover:border-[#00FF66] hover:text-[#00FF66] transition-colors">
+                  [ + ADD_SUBTASK ]
+                </button>
+              )}
+            </div>
 
             <div>
               <div className="text-[#00FF66] text-xs mb-2">{">"} FILES:</div>
@@ -970,14 +1238,8 @@ const handleAIEnhance = async () => {
                       key={file.id}
                       className="flex items-center justify-between border border-[#262626] bg-[#1A1A1A] p-2"
                     >
-                      <a
-                        href={file.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[#00FF66] text-xs hover:underline truncate flex-1"
-                      >
-                        {file.name}
-                      </a>
+                      <a href={file.url} target="_blank" rel="noopener noreferrer"
+                        className="text-[#00FF66] text-xs hover:underline truncate flex-1">{file.name}</a>
                       <span className="text-[#00FF66]/50 text-xs ml-2 shrink-0">
                         {(file.size / 1024).toFixed(1)} KB
                       </span>
@@ -987,9 +1249,7 @@ const handleAIEnhance = async () => {
               </div>
               <label className="flex items-center gap-2 cursor-pointer border border-dashed border-[#262626] hover:border-[#00FF66] p-3 transition-colors">
                 <span className="text-[#00FF66] text-xs">[ UPLOAD_FILE ]</span>
-                <input
-                  type="file"
-                  className="hidden"
+                <input type="file" className="hidden"
                   onChange={async (e) => {
                     const file = e.target.files?.[0]
                     if (!file) return
@@ -997,18 +1257,10 @@ const handleAIEnhance = async () => {
                     formData.append("file", file)
                     formData.append("taskId", task.id)
                     try {
-                      const res = await fetch("/api/upload", {
-                        method: "POST",
-                        body: formData,
-                      })
-                      if (res.ok) {
-                        window.location.reload()
-                      }
-                    } catch (err) {
-                      console.error("Upload failed:", err)
-                    }
-                  }}
-                />
+                      const res = await fetch("/api/upload", { method: "POST", body: formData })
+                      if (res.ok) { if (onUploadComplete) onUploadComplete() }
+                    } catch (err) { console.error("Upload failed:", err) }
+                  }} />
               </label>
             </div>
 
@@ -1019,34 +1271,43 @@ const handleAIEnhance = async () => {
                   <div className="text-[#00FF66]/50 text-xs">NO_COMMENTS</div>
                 ) : (
                   task.comments.map((comment) => (
-                    <div
-                      key={comment.id}
-                      className="border border-[#262626] bg-[#1A1A1A] p-3"
-                    >
+                    <div key={comment.id} className="border border-[#262626] bg-[#1A1A1A] p-3">
                       <div className="flex items-center gap-2 mb-2">
-                          <span className="text-[#00FF66] text-xs font-bold">
-                            {comment.authorName}
-                          </span>
-                          <span className="text-[#00FF66]/50 text-xs">
-                            {new Date(comment.createdAt).toLocaleString("pt-BR")}
-                          </span>
-                        </div>
-                      <div className="text-white text-sm break-words">
-                        {comment.content}
+                        <span className="text-[#00FF66] text-xs font-bold">{comment.authorName}</span>
+                        <span className="text-[#00FF66]/50 text-xs">
+                          {new Date(comment.createdAt).toLocaleString("pt-BR")}
+                        </span>
+                        {comment.authorName === currentUser.username && (
+                          <button onClick={() => {
+                            if (editingCommentId === comment.id) { setEditingCommentId(null) }
+                            else { setEditingCommentId(comment.id); setEditingCommentContent(comment.content) }
+                          }}
+                            className="ml-auto text-[#00FF66]/50 hover:text-[#00FF66] text-xs px-1 border border-[#262626] hover:border-[#00FF66] transition-colors">[ EDIT ]</button>
+                        )}
                       </div>
+                      {editingCommentId === comment.id ? (
+                        <div className="space-y-2">
+                          <textarea value={editingCommentContent} onChange={(e) => setEditingCommentContent(e.target.value)}
+                            rows={3}
+                            className="w-full px-3 py-2 bg-black border border-[#00FF66] text-white text-sm focus:outline-none resize-none" />
+                          <div className="flex gap-2">
+                            <button onClick={() => handleEditComment(comment.id)} disabled={!editingCommentContent.trim()}
+                              className="flex-1 h-8 border border-[#00FF66] text-[#00FF66] text-xs hover:bg-[#00FF66] hover:text-black transition-colors disabled:opacity-50">[ SAVE_EDIT ]</button>
+                            <button onClick={() => setEditingCommentId(null)}
+                              className="h-8 px-3 border border-[#262626] text-[#00FF66]/50 text-xs hover:border-[#00FF66] transition-colors">[ CANCEL ]</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-white text-sm break-words">{comment.content}</div>
+                      )}
                     </div>
                   ))
                 )}
               </div>
 
               <div className="text-[#00FF66] text-xs mb-2">{">"} NEW_COMMENT (use @ para mencionar):</div>
-              <MentionInput
-                value={newComment}
-                onChange={setNewComment}
-                onSubmit={handleAddComment}
-                team={team}
-                placeholder="Digite seu comentário..."
-              />
+              <MentionInput value={newComment} onChange={setNewComment}
+                onSubmit={handleAddComment} team={team} placeholder="Digite seu comentário..." />
             </div>
 
             <div className="text-[#00FF66]/50 text-xs">
@@ -1060,7 +1321,7 @@ const handleAIEnhance = async () => {
 }
 
 // ==================== TASK CARD ====================
-function TaskCard({
+function SortableTaskCard({
   task,
   columnIndex,
   taskIndex,
@@ -1070,6 +1331,7 @@ function TaskCard({
   onMoveVertical,
   onDelete,
   onEdit,
+  onCancel,
 }: {
   task: Task
   columnIndex: number
@@ -1080,12 +1342,25 @@ function TaskCard({
   onMoveVertical: (direction: "up" | "down") => void
   onDelete: () => void
   onEdit: () => void
+  onCancel?: () => void
 }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  }
+
   return (
     <div
+      ref={setNodeRef}
+      style={style}
       onClick={onEdit}
-      className={`border border-[#262626] p-3 cursor-pointer hover:border-[#00FF66]/50 transition-colors ${task.is_completed ? 'bg-[#00FF66] text-black font-bold' : 'bg-[#1A1A1A] text-white'}` }
+      className="border border-[#262626] bg-[#1A1A1A] p-3 cursor-pointer hover:border-[#00FF66]/50 transition-colors"
     >
+      <div {...attributes} {...listeners} className="text-[#00FF66]/30 text-xs mb-1 cursor-grab active:cursor-grabbing select-none">
+        ⠿ {task.title ? "DRAG" : ""}
+      </div>
       {task.labels.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-2">
           {task.labels.map((label) => (
@@ -1094,16 +1369,12 @@ function TaskCard({
         </div>
       )}
 
-      <div className={`text-${task.is_completed ? 'black' : 'white'} font-bold text-sm mb-2 break-words`}>
-        {task.title}
-      </div>
+      <div className="text-white font-bold text-sm mb-2 break-words">{task.title}</div>
       {task.description && (
-        <div className={`text-${task.is_completed ? 'black' : 'white'}/70 text-xs mb-3 break-words line-clamp-2`}>
-          {task.description}
-        </div>
+        <div className="text-white/70 text-xs mb-3 break-words line-clamp-2">{task.description}</div>
       )}
 
-                      <div className="text-[#00FF66] text-xs mb-3 flex flex-wrap gap-1">
+      <div className="text-[#00FF66] text-xs mb-3 flex flex-wrap gap-1">
         {task.assignees.map((assignee, i) => {
           const display = assignee.startsWith("@") ? assignee : `@${assignee.toLowerCase().replace(/\s+/g, "_")}`
           return <span key={i}>{display}{i < task.assignees.length - 1 ? "," : ""}</span>
@@ -1111,13 +1382,18 @@ function TaskCard({
       </div>
 
       {task.comments.length > 0 && (
-        <div className="text-[#00FF66]/50 text-xs mb-3">
-          [ {task.comments.length} COMMENT{task.comments.length > 1 ? "S" : ""} ]
-        </div>
+        <div className="text-[#00FF66]/50 text-xs mb-3">[ {task.comments.length} COMMENT{task.comments.length > 1 ? "S" : ""} ]</div>
       )}
       {task.files && task.files.length > 0 && (
+        <div className="text-[#00FF66]/50 text-xs mb-3">[ {task.files.length} FILE{task.files.length > 1 ? "S" : ""} ]</div>
+      )}
+      {task.subtaskCount !== undefined && task.subtaskCount > 0 && (
         <div className="text-[#00FF66]/50 text-xs mb-3">
-          [ {task.files.length} FILE{task.files.length > 1 ? "S" : ""} ]
+          [ {task.subtaskCount} SUBTASK{(task.subtaskCount || 0) > 1 ? "S" : ""} ]
+          {(task.totalEstimatedHours || 0) > 0 && <> | EST: {task.totalEstimatedHours}h</>}
+          {(task.totalTimeSpent || 0) > 0 && (
+            <> | REAL: {Math.floor((task.totalTimeSpent || 0) / 3600)}h {Math.floor(((task.totalTimeSpent || 0) % 3600) / 60)}m</>
+          )}
         </div>
       )}
 
@@ -1127,40 +1403,21 @@ function TaskCard({
             onClick={() => onMoveVertical("up")}
             disabled={taskIndex === 0}
             className="h-6 w-6 border border-[#262626] text-[#00FF66] text-xs hover:border-[#00FF66] transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
-          >
-            ▲
-          </button>
+          >▲</button>
           <button
             onClick={() => onMoveVertical("down")}
             disabled={taskIndex === totalTasks - 1}
             className="h-6 w-6 border border-[#262626] text-[#00FF66] text-xs hover:border-[#00FF66] transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
-          >
-            ▼
-          </button>
+          >▼</button>
         </div>
-
         {columnIndex > 0 && (
-          <button
-            onClick={() => onMove("left")}
-            className="h-8 px-2 border border-[#262626] text-[#00FF66] text-xs hover:border-[#00FF66] transition-colors"
-          >
-            ←
-          </button>
+          <button onClick={() => onMove("left")} className="h-8 px-2 border border-[#262626] text-[#00FF66] text-xs hover:border-[#00FF66] transition-colors">←</button>
         )}
         {columnIndex < totalColumns - 1 && (
-          <button
-            onClick={() => onMove("right")}
-            className="h-8 px-2 border border-[#262626] text-[#00FF66] text-xs hover:border-[#00FF66] transition-colors"
-          >
-            →
-          </button>
+          <button onClick={() => onMove("right")} className="h-8 px-2 border border-[#262626] text-[#00FF66] text-xs hover:border-[#00FF66] transition-colors">→</button>
         )}
-        <button
-          onClick={onDelete}
-          className="h-8 px-2 border border-[#FF3333]/50 text-[#FF3333] text-xs hover:border-[#FF3333] hover:bg-[#FF3333] hover:text-black transition-colors ml-auto"
-        >
-          DEL
-        </button>
+        <button onClick={onDelete} className="h-8 px-2 border border-[#FF3333]/50 text-[#FF3333] text-xs hover:border-[#FF3333] hover:bg-[#FF3333] hover:text-black transition-colors ml-auto">DEL</button>
+        {onCancel && <button onClick={onCancel} className="h-8 px-2 border border-[#FF3333] text-[#FF3333] text-xs hover:bg-[#FF3333] hover:text-black transition-colors">✕</button>}
       </div>
     </div>
   )
@@ -1268,7 +1525,11 @@ function KanbanColumn({
   onDeleteTask,
   onDeleteColumn,
   onEditTask,
+  onCancelTask,
   isDefault,
+  onMoveColumn,
+  columnPosition,
+  allColumnsCount,
 }: {
   column: Column
   columnIndex: number
@@ -1280,42 +1541,61 @@ function KanbanColumn({
   onDeleteTask: (taskId: string) => void
   onDeleteColumn: () => void
   onEditTask: (task: Task) => void
+  onCancelTask?: (task: Task) => void
   isDefault: boolean
+  onMoveColumn?: (direction: "left" | "right") => void
+  columnPosition?: number
+  allColumnsCount?: number
 }) {
   const [showNewTaskForm, setShowNewTaskForm] = useState(false)
+  const taskIds = column.tasks.map((t) => t.id)
 
   return (
     <div className="flex-shrink-0 w-72 md:w-80 border border-[#262626] bg-black flex flex-col max-h-full">
       <div className="border-b border-[#262626] p-3 flex items-center justify-between bg-[#1A1A1A]">
-        <div className="flex items-center gap-2">
-          <span className="text-[#00FF66] font-bold text-sm">{column.name}</span>
-          <span className="text-[#00FF66]/50 text-xs">[{column.tasks.length}]</span>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-[#00FF66] font-bold text-sm truncate">{column.name}</span>
+          <span className="text-[#00FF66]/50 text-xs shrink-0">[{column.tasks.length}]</span>
         </div>
-        {!isDefault && (
-          <button
-            onClick={onDeleteColumn}
-            className="text-[#FF3333]/50 hover:text-[#FF3333] text-xs transition-colors px-2"
-          >
-            ×
-          </button>
-        )}
+        <div className="flex items-center gap-1 shrink-0">
+          {onMoveColumn && columnPosition !== undefined && (
+            <>
+              <button
+                onClick={() => onMoveColumn("left")}
+                disabled={columnPosition === 0}
+                className="h-5 w-5 border border-[#262626] text-[#00FF66] text-[10px] hover:border-[#00FF66] transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
+              >◀</button>
+              <button
+                onClick={() => onMoveColumn("right")}
+                disabled={columnPosition === (allColumnsCount ?? totalColumns) - 1}
+                className="h-5 w-5 border border-[#262626] text-[#00FF66] text-[10px] hover:border-[#00FF66] transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
+              >▶</button>
+            </>
+          )}
+          {!isDefault && (
+            <button onClick={onDeleteColumn} className="text-[#FF3333]/50 hover:text-[#FF3333] text-xs transition-colors px-1">×</button>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
-        {column.tasks.map((task, taskIndex) => (
-          <TaskCard
-            key={task.id}
-            task={task}
-            columnIndex={columnIndex}
-            taskIndex={taskIndex}
-            totalColumns={totalColumns}
-            totalTasks={column.tasks.length}
-            onMove={(direction) => onMoveTask(task.id, direction)}
-            onMoveVertical={(direction) => onMoveTaskVertical(task.id, direction)}
-            onDelete={() => onDeleteTask(task.id)}
-            onEdit={() => onEditTask(task)}
-          />
-        ))}
+        <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
+          {column.tasks.map((task, taskIndex) => (
+            <SortableTaskCard
+              key={task.id}
+              task={task}
+              columnIndex={columnIndex}
+              taskIndex={taskIndex}
+              totalColumns={totalColumns}
+              totalTasks={column.tasks.length}
+              onMove={(direction) => onMoveTask(task.id, direction)}
+              onMoveVertical={(direction) => onMoveTaskVertical(task.id, direction)}
+              onDelete={() => onDeleteTask(task.id)}
+              onEdit={() => onEditTask(task)}
+              onCancel={onCancelTask ? () => onCancelTask(task) : undefined}
+            />
+          ))}
+        </SortableContext>
 
         {showNewTaskForm ? (
           <NewTaskForm
@@ -1492,9 +1772,8 @@ function KanbanBoard({
   onAddComment,
   onMarkNotificationRead,
   onClearAllNotifications,
-  onCompleteTask,
-  onArchiveTask,
   refreshData,
+  onReorderColumns,
 }: {
   currentUser: TeamMember
   team: TeamMember[]
@@ -1511,15 +1790,13 @@ function KanbanBoard({
   onDeleteTask: (taskId: string) => void
   onMoveTask: (taskId: string, fromColumnId: string, toColumnId: string, newPosition?: number) => void
   onAddComment: (taskId: string, content: string, mentions: string[]) => void
+  onEditComment: (taskId: string, commentId: string, content: string) => void
   onMarkNotificationRead: (id: string) => void
   onClearAllNotifications: () => void
-  onCompleteTask: (taskId: string) => void
-  onArchiveTask: (taskId: string) => void
   refreshData: () => void
+  onReorderColumns?: (columns: Column[]) => void
 }) {
-  const [showTeamModal, setShowTeamModal] = useState(false);
-const [viewMode, setViewMode] = useState<"kanban" | "list">("kanban");
-const [showArchived, setShowArchived] = useState(false);
+  const [showTeamModal, setShowTeamModal] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
   const [showProfileEdit, setShowProfileEdit] = useState(false)
   const [showNewColumnForm, setShowNewColumnForm] = useState(false)
@@ -1527,12 +1804,91 @@ const [showArchived, setShowArchived] = useState(false);
     task: Task
     columnId: string
   } | null>(null)
+  const [activeTask, setActiveTask] = useState<{ task: Task; columnId: string } | null>(null)
+  const [filterAssignee, setFilterAssignee] = useState<string[]>([])
+  const [filterLabel, setFilterLabel] = useState<string[]>([])
+  const [pendingCloseTask, setPendingCloseTask] = useState<{ taskId: string; fromColumnId: string; toColumnId: string; newPosition?: number } | null>(null)
+  const [cancelModalTask, setCancelModalTask] = useState<Task | null>(null)
+  const [cancelReason, setCancelReason] = useState("")
 
-  const handleMoveTask = (columnId: string, taskId: string, direction: "left" | "right") => {
+  const allLabels: Label[] = columns.flatMap((c) => c.tasks.flatMap((t) => t.labels))
+    .filter((l, i, arr) => arr.findIndex((x) => x.id === l.id) === i)
+
+  const filteredColumns = columns.map((col) => ({
+    ...col,
+    tasks: col.tasks.filter((t) => {
+      if (filterAssignee.length > 0 && !t.assignees.some((a) => filterAssignee.includes(a))) return false
+      if (filterLabel.length > 0 && !t.labels.some((l) => filterLabel.includes(l.id))) return false
+      return true
+    }),
+  }))
+
+  const findColumnByTaskId = (taskId: string) =>
+    columns.find((c) => c.tasks.some((t) => t.id === taskId))
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const taskId = event.active.id as string
+    const column = findColumnByTaskId(taskId)
+    const task = column?.tasks.find((t) => t.id === taskId)
+    if (task && column) setActiveTask({ task, columnId: column.id })
+  }
+
+  const handleDragOver = (event: DragOverEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const activeCol = findColumnByTaskId(active.id as string)
+    const overCol = findColumnByTaskId(over.id as string)
+    if (!activeCol || !overCol || activeCol.id === overCol.id) return
+    if (isClosingColumn(overCol.id)) {
+      checkSubtaskCompletion(active.id as string).then((ok) => {
+        if (!ok) {
+          setActiveTask(null)
+          showToast("Task possui subtarefas pendentes! Feche-as antes.", "warning")
+          return
+        }
+      })
+    }
+    const activeIndex = activeCol.tasks.findIndex((t) => t.id === active.id)
+    const overIndex = overCol.tasks.findIndex((t) => t.id === over.id)
+    if (activeIndex === -1) return
+    onMoveTask(active.id as string, activeCol.id, overCol.id, overIndex === -1 ? overCol.tasks.length : overIndex)
+  }
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setActiveTask(null)
+  }
+
+  const isClosingColumn = (colId: string) => {
+    const col = columns.find((c) => c.id === colId)
+    return col?.name === "FEITO"
+  }
+
+  const checkSubtaskCompletion = async (taskId: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/subtasks?taskId=${taskId}`)
+      const d = await res.json()
+      const sts: Subtask[] = d.subtasks || []
+      return sts.length === 0 || sts.every((st) => st.status === "APROVADO" || st.status === "FEITO")
+    } catch { return true }
+  }
+
+  const handleMoveTask = async (columnId: string, taskId: string, direction: "left" | "right") => {
     const columnIndex = columns.findIndex((c) => c.id === columnId)
     const toIndex = direction === "left" ? columnIndex - 1 : columnIndex + 1
     if (toIndex < 0 || toIndex >= columns.length) return
     const toColumnId = columns[toIndex].id
+    if (isClosingColumn(toColumnId)) {
+      const ok = await checkSubtaskCompletion(taskId)
+      if (!ok) {
+        setPendingCloseTask({ taskId, fromColumnId: columnId, toColumnId })
+        return
+      }
+    }
     onMoveTask(taskId, columnId, toColumnId)
   }
 
@@ -1546,18 +1902,6 @@ const [showArchived, setShowArchived] = useState(false);
     onMoveTask(taskId, columnId, columnId, newPosition)
   }
 
-<<<<<<< HEAD
-  const allLabels = columns.flatMap((col) => col.tasks.flatMap((t) => t.labels)).filter(
-    (label, index, self) => self.findIndex((l) => l.name === label.name) === index
-  )
-
-  const visibleColumns = columns.map((col) => ({
-    ...col,
-    tasks: col.tasks.filter((t) => !t.is_archived),
-  }))
-
-  const activeTasksCount = visibleColumns.reduce((acc, col) => acc + col.tasks.length, 0)
-=======
   const handleColumnMove = (columnId: string, direction: "left" | "right") => {
     const idx = columns.findIndex((c) => c.id === columnId)
     if (idx === -1) return
@@ -1566,14 +1910,13 @@ const [showArchived, setShowArchived] = useState(false);
     const reordered = [...columns]
     ;[reordered[idx], reordered[targetIdx]] = [reordered[targetIdx], reordered[idx]]
     reordered.forEach((c, i) => { c.position = i })
-    setColumns(reordered)
+    if (onReorderColumns) onReorderColumns(reordered)
     fetch(`/api/columns/reorder`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ columns: reordered.map((c, i) => ({ id: c.id, position: i })) }),
     }).catch(console.error)
   }
->>>>>>> parent of 6786381 (renomear função de middleware para proxy e ajustar lógica de autenticação)
 
   return (
     <div className="min-h-screen bg-black flex flex-col">
@@ -1629,19 +1972,19 @@ const [showArchived, setShowArchived] = useState(false);
           onAddComment={(content, mentions) => {
             onAddComment(editingTask.task.id, content, mentions)
           }}
-          onComplete={() => onCompleteTask(editingTask.task.id)}
-          onArchive={() => onArchiveTask(editingTask.task.id)}
-          allLabels={allLabels}
+          onEditComment={(commentId, content) => {
+            onEditComment(editingTask.task.id, commentId, content)
+          }}
+          onUploadComplete={refreshData}
         />
       )}
 
-<<<<<<< HEAD
       {pendingCloseTask && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="border-2 border-[#FF3333] bg-black max-w-lg w-full p-6">
             <div className="text-[#FF3333] font-bold text-sm mb-4">{">"} SUBTAREFAS_PENDENTES</div>
             <div className="text-white/70 text-xs mb-6">
-              Esta tarefa possui subtarefas que ainda não foram concluidas (APROVADO/FEITO). Deseja movê-la para FEITO mesmo assim?
+              Esta tarefa possui subtarefas que ainda não foram concluídas (APROVADO/FEITO). Deseja movê-la para FEITO mesmo assim?
             </div>
             <div className="flex gap-3">
               <button onClick={() => {
@@ -1676,37 +2019,53 @@ const [showArchived, setShowArchived] = useState(false);
         </div>
       )}
 
-=======
->>>>>>> e7c63f3623c672cf757a0716db12df4fd6f69be2
       <div className="flex-1 p-3 md:p-6 overflow-hidden">
-        <div className="flex items-center gap-4 mb-4 overflow-x-auto pb-2">
-          <div className="text-[#00FF66] text-sm whitespace-nowrap">
-            {">"} BOARD_STATUS: SUPABASE_CONNECTED
-          </div>
-          <div className="text-[#00FF66]/50 text-xs whitespace-nowrap">
-            COLUMNS: {columns.length} | TASKS:{" "}
-            {activeTasksCount}
-          </div>
-          <button
-            onClick={() => setViewMode(viewMode === "kanban" ? "list" : "kanban")}
-            className={`h-8 px-3 border text-xs transition-colors whitespace-nowrap ${
-              viewMode === "list"
-                ? "border-[#00FF66] bg-[#00FF66] text-black"
-                : "border-[#262626] text-[#00FF66]/50 hover:border-[#00FF66] hover:text-[#00FF66]"
-            }`}
+        <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-2 flex-wrap">
+          <div className="text-[#00FF66] text-sm whitespace-nowrap">{">"} BOARD_STATUS: SUPABASE_CONNECTED</div>
+          <div className="text-[#00FF66]/50 text-xs whitespace-nowrap">COLUMNS: {columns.length} | TASKS: {columns.reduce((acc, col) => acc + col.tasks.length, 0)}</div>
+          <div className="flex-1" />
+          <select
+            multiple
+            value={filterAssignee}
+            onChange={(e) => setFilterAssignee(Array.from(e.target.selectedOptions, (o) => o.value))}
+            className="h-8 max-w-[140px] bg-[#1A1A1A] border border-[#262626] text-[#00FF66] text-[10px] focus:border-[#00FF66] focus:outline-none"
           >
-            [ {viewMode === "kanban" ? "MODO_LISTA" : "MODO_KANBAN"} ]
-          </button>
+            {team.map((m) => (
+              <option key={m.id} value={m.name}>{m.username}</option>
+            ))}
+          </select>
+          <select
+            multiple
+            value={filterLabel}
+            onChange={(e) => setFilterLabel(Array.from(e.target.selectedOptions, (o) => o.value))}
+            className="h-8 max-w-[140px] bg-[#1A1A1A] border border-[#262626] text-[#00FF66] text-[10px] focus:border-[#00FF66] focus:outline-none"
+          >
+            {allLabels.map((l) => (
+              <option key={l.id} value={l.id}>{l.name}</option>
+            ))}
+          </select>
+          {(filterAssignee.length > 0 || filterLabel.length > 0) && (
+            <button
+              onClick={() => { setFilterAssignee([]); setFilterLabel([]) }}
+              className="h-8 px-2 border border-[#FF3333]/50 text-[#FF3333] text-[10px] hover:border-[#FF3333] transition-colors"
+            >CLEAR</button>
+          )}
         </div>
 
-        {viewMode === "kanban" ? (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCorners}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragEnd={handleDragEnd}
+        >
           <div className="flex gap-4 overflow-x-auto pb-4 h-[calc(100vh-200px)] md:h-[calc(100vh-180px)]">
-            {visibleColumns.map((column, index) => (
+            {filteredColumns.map((column, index) => (
               <KanbanColumn
                 key={column.id}
                 column={column}
                 columnIndex={index}
-                totalColumns={visibleColumns.length}
+                totalColumns={filteredColumns.length}
                 team={team}
                 onAddTask={(task) => onAddTask(column.id, task)}
                 onMoveTask={(taskId, direction) => handleMoveTask(column.id, taskId, direction)}
@@ -1714,72 +2073,40 @@ const [showArchived, setShowArchived] = useState(false);
                 onDeleteTask={(taskId) => onDeleteTask(taskId)}
                 onDeleteColumn={() => onDeleteColumn(column.id)}
                 onEditTask={(task) => setEditingTask({ task, columnId: column.id })}
+                onCancelTask={(task) => setCancelModalTask(task)}
                 isDefault={DEFAULT_COLUMN_NAMES.includes(column.name)}
+                onMoveColumn={(dir) => handleColumnMove(column.id, dir)}
+                columnPosition={columns.findIndex((c) => c.id === column.id)}
+                allColumnsCount={columns.length}
               />
             ))}
 
-            {showNewColumnForm ? (
-              <NewColumnForm
-                onSubmit={(name) => {
-                  onAddColumn(name)
-                  setShowNewColumnForm(false)
-                }}
-                onCancel={() => setShowNewColumnForm(false)}
-              />
-            ) : (
-              <button
-                onClick={() => setShowNewColumnForm(true)}
-                className="flex-shrink-0 w-72 md:w-80 h-16 border border-dashed border-[#262626] text-[#00FF66]/50 text-xs hover:border-[#00FF66] hover:text-[#00FF66] transition-colors flex items-center justify-center"
-              >
-                [ + NEW COLUMN ]
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="overflow-x-auto pb-4 h-[calc(100vh-200px)] md:h-[calc(100vh-180px)]">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="border-b border-[#262626]">
-                  <th className="text-left text-[#00FF66] text-xs p-2 font-bold">TAREFA</th>
-                  <th className="text-left text-[#00FF66] text-xs p-2 font-bold">COLUNA</th>
-                  <th className="text-left text-[#00FF66] text-xs p-2 font-bold">RESPONSAVEIS</th>
-                  <th className="text-left text-[#00FF66] text-xs p-2 font-bold">STATUS</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleColumns.flatMap((col) =>
-                  col.tasks.map((task) => (
-                    <tr
-                      key={task.id}
-                      onClick={() => setEditingTask({ task, columnId: col.id })}
-                      className={`border-b border-[#1A1A1A] cursor-pointer hover:bg-[#1A1A1A] transition-colors ${
-                        task.is_completed ? "bg-[#00FF66]/10" : ""
-                      }`}
-                    >
-                      <td className="p-2 text-white text-sm">{task.title}</td>
-                      <td className="p-2 text-[#00FF66] text-xs">{col.name}</td>
-                      <td className="p-2 text-[#00FF66]/50 text-xs">
-                        {task.assignees.map((a) => `@${a}`).join(", ")}
-                      </td>
-                      <td className="p-2 text-xs">
-                        {task.is_completed ? (
-                          <span className="text-[#00FF66]">CONCLUIDO</span>
-                        ) : (
-                          <span className="text-yellow-500">PENDENTE</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-            {activeTasksCount === 0 && (
-              <div className="text-center text-[#00FF66]/30 text-sm py-8">
-                {">"} NENHUMA_TAREFA_ENCONTRADA
-              </div>
-            )}
-          </div>
-        )}
+          {showNewColumnForm ? (
+            <NewColumnForm
+              onSubmit={(name) => {
+                onAddColumn(name)
+                setShowNewColumnForm(false)
+              }}
+              onCancel={() => setShowNewColumnForm(false)}
+            />
+          ) : (
+            <button
+              onClick={() => setShowNewColumnForm(true)}
+              className="flex-shrink-0 w-72 md:w-80 h-16 border border-dashed border-[#262626] text-[#00FF66]/50 text-xs hover:border-[#00FF66] hover:text-[#00FF66] transition-colors flex items-center justify-center"
+            >
+              [ + NEW COLUMN ]
+            </button>
+          )}
+        </div>
+        <DragOverlay>
+          {activeTask ? (
+            <div className="border border-[#00FF66] bg-[#1A1A1A] p-3 opacity-80 w-72 md:w-80">
+              <div className="text-white font-bold text-sm mb-2">{activeTask.task.title}</div>
+              <div className="text-[#00FF66] text-xs">[ DRAGGING ]</div>
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
       </div>
 
       <footer className="border-t border-[#262626] p-3 text-center">
@@ -1823,7 +2150,7 @@ export default function BroLabTask() {
 
       const columnsWithTasks = columnsList.map((col: { id: string; name: string; position: number }) => ({
         ...col,
-        tasks: tasksList.filter((t: Task) => t.columnId === col.id).sort((a: Task, b: Task) => a.position - b.position),
+        tasks: tasksList.filter((t: Task) => t.columnPosition === col.position).sort((a: Task, b: Task) => a.position - b.position),
       }))
 
       setColumns(columnsWithTasks)
@@ -1853,36 +2180,66 @@ export default function BroLabTask() {
     }
   }, [currentUser])
 
-  // Initial load
+  // Initial load: restore session then fetch data
   useEffect(() => {
     const init = async () => {
-<<<<<<< HEAD
-=======
       setLoadingMessage("RESTORING_SESSION...")
       try {
         const meRes = await fetch("/api/auth/me")
         if (meRes.ok) {
           const meData = await meRes.json()
-          setCurrentUser(meData.user)
+          if (meData.user) {
+            setCurrentUser(meData.user)
+            setLoadingMessage("CONNECTING_TO_SUPABASE...")
+            await fetchData()
+            setLoadingMessage("SYSTEM_READY")
+            setIsLoading(false)
+            return
+          }
         }
       } catch { /* no session */ }
-      if (!currentUser) {
-        setIsLoading(false)
-        return
-      }
->>>>>>> parent of 6786381 (renomear função de middleware para proxy e ajustar lógica de autenticação)
-      setLoadingMessage("CONNECTING_TO_SUPABASE...")
-      await fetchData()
-      setLoadingMessage("SYSTEM_READY")
       setIsLoading(false)
     }
     init()
   }, [fetchData])
 
-  // Fetch notifications when user logs in
+  // Subscribe to realtime notifications for current user and fetch initial list
   useEffect(() => {
-    if (currentUser) {
-      fetchNotifications()
+    if (!currentUser) return
+    // Load existing notifications
+    fetchNotifications()
+    const supabase = createClient()
+    const channel = supabase
+      .channel(`notifications_user_${currentUser.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          // Adjust filter field name if needed
+          filter: `user_id=eq.${currentUser.id}`,
+        },
+        (payload) => {
+          const n = payload.new
+          const newNotif = {
+            id: n.id,
+            type: n.type,
+            message: n.message,
+            taskId: n.task_id,
+            taskTitle: n.task_title,
+            fromUser: n.from_user,
+            createdAt: n.created_at,
+            read: n.read,
+          }
+          setNotifications((prev) => [newNotif, ...prev])
+          showToast(n.message || `Nova notificação`, n.type === 'mention' ? 'warning' : 'info')
+        },
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
     }
   }, [currentUser, fetchNotifications])
 
@@ -1898,10 +2255,12 @@ export default function BroLabTask() {
       throw new Error(data.error || "ERRO: FALHA_NO_LOGIN")
     }
     setCurrentUser(data.user)
+    await fetchData()
   }
 
   // Logout handler
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" })
     setCurrentUser(null)
     setNotifications([])
   }
@@ -1980,16 +2339,15 @@ export default function BroLabTask() {
   }
 
   // Add task
-  const handleAddTask = async (columnId: string, task: { title: string; description: string; assignees: string[] }) => {
+  const handleAddTask = async (_columnId: string, task: { title: string; description: string; assignees: string[] }) => {
     try {
-      const column = columns.find((c) => c.id === columnId)
+      const backlog = columns.find((c) => c.position === 0)
       await fetch("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...task,
-          columnId,
-          position: column?.tasks.length || 0,
+          position: backlog?.tasks.length || 0,
         }),
       })
       await fetchData()
@@ -2031,7 +2389,7 @@ export default function BroLabTask() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: taskId,
-          columnId: toColumnId,
+          columnPosition: toColumn?.position ?? 0,
           position: newPosition !== undefined ? newPosition : toColumn?.tasks.length || 0,
         }),
       })
@@ -2058,6 +2416,20 @@ export default function BroLabTask() {
       await fetchNotifications()
     } catch (error) {
       console.error("Error adding comment:", error)
+    }
+  }
+
+  // Edit comment
+  const handleEditComment = async (taskId: string, commentId: string, content: string) => {
+    try {
+      await fetch("/api/comments", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: commentId, content }),
+      })
+      await fetchData()
+    } catch (error) {
+      console.error("Error editing comment:", error)
     }
   }
 
@@ -2088,81 +2460,15 @@ export default function BroLabTask() {
     }
   }
 
-  // Complete task
-  const handleCompleteTask = async (taskId: string) => {
-    try {
-      await fetch("/api/tasks", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: taskId, is_completed: true }),
-      })
-      setColumns((prev) =>
-        prev.map((col) => ({
-          ...col,
-          tasks: col.tasks.map((t) =>
-            t.id === taskId ? { ...t, is_completed: true } : t
-          ),
-        }))
-      )
-    } catch (error) {
-      console.error("Error completing task:", error)
-    }
-  }
-
-  // Archive task
-  const handleArchiveTask = async (taskId: string) => {
-    try {
-      await fetch("/api/tasks", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: taskId, is_archived: true }),
-      })
-      setColumns((prev) =>
-        prev.map((col) => ({
-          ...col,
-          tasks: col.tasks.map((t) =>
-            t.id === taskId ? { ...t, is_archived: true } : t
-          ),
-        }))
-      )
-    } catch (error) {
-      console.error("Error archiving task:", error)
-    }
-  }
-
   if (isLoading) {
     return <LoadingScreen message={loadingMessage} />
   }
 
   if (!currentUser) {
-    return <LoginScreen onLogin={handleLogin} isLoading={false} />
+    return <><LoginScreen onLogin={handleLogin} isLoading={false} /><ToastContainer /></>
   }
 
   return (
-<<<<<<< HEAD
-    <KanbanBoard
-      currentUser={currentUser}
-      team={team}
-      columns={columns}
-      notifications={notifications}
-      onLogout={handleLogout}
-      onUpdateUser={handleUpdateUser}
-      onAddTeamMember={handleAddTeamMember}
-      onDeleteTeamMember={handleDeleteTeamMember}
-      onAddColumn={handleAddColumn}
-      onDeleteColumn={handleDeleteColumn}
-      onAddTask={handleAddTask}
-      onUpdateTask={handleUpdateTask}
-      onDeleteTask={handleDeleteTask}
-      onMoveTask={handleMoveTask}
-      onAddComment={handleAddComment}
-      onMarkNotificationRead={handleMarkNotificationRead}
-      onClearAllNotifications={handleClearAllNotifications}
-      onCompleteTask={handleCompleteTask}
-      onArchiveTask={handleArchiveTask}
-      refreshData={fetchData}
-    />
-=======
     <>
       <KanbanBoard
         currentUser={currentUser}
@@ -2184,9 +2490,9 @@ export default function BroLabTask() {
         onMarkNotificationRead={handleMarkNotificationRead}
         onClearAllNotifications={handleClearAllNotifications}
         refreshData={fetchData}
+        onReorderColumns={(cols) => setColumns(cols)}
       />
       <ToastContainer />
     </>
->>>>>>> parent of 6786381 (renomear função de middleware para proxy e ajustar lógica de autenticação)
   )
 }
