@@ -1546,18 +1546,6 @@ const [showArchived, setShowArchived] = useState(false);
     onMoveTask(taskId, columnId, columnId, newPosition)
   }
 
-<<<<<<< HEAD
-  const allLabels = columns.flatMap((col) => col.tasks.flatMap((t) => t.labels)).filter(
-    (label, index, self) => self.findIndex((l) => l.name === label.name) === index
-  )
-
-  const visibleColumns = columns.map((col) => ({
-    ...col,
-    tasks: col.tasks.filter((t) => !t.is_archived),
-  }))
-
-  const activeTasksCount = visibleColumns.reduce((acc, col) => acc + col.tasks.length, 0)
-=======
   const handleColumnMove = (columnId: string, direction: "left" | "right") => {
     const idx = columns.findIndex((c) => c.id === columnId)
     if (idx === -1) return
@@ -1573,7 +1561,6 @@ const [showArchived, setShowArchived] = useState(false);
       body: JSON.stringify({ columns: reordered.map((c, i) => ({ id: c.id, position: i })) }),
     }).catch(console.error)
   }
->>>>>>> parent of 6786381 (renomear função de middleware para proxy e ajustar lógica de autenticação)
 
   return (
     <div className="min-h-screen bg-black flex flex-col">
@@ -1813,8 +1800,6 @@ export default function BroLabTask() {
   // Initial load
   useEffect(() => {
     const init = async () => {
-<<<<<<< HEAD
-=======
       setLoadingMessage("RESTORING_SESSION...")
       try {
         const meRes = await fetch("/api/auth/me")
@@ -1827,7 +1812,6 @@ export default function BroLabTask() {
         setIsLoading(false)
         return
       }
->>>>>>> parent of 6786381 (renomear função de middleware para proxy e ajustar lógica de autenticação)
       setLoadingMessage("CONNECTING_TO_SUPABASE...")
       await fetchData()
       setLoadingMessage("SYSTEM_READY")
@@ -1937,16 +1921,15 @@ export default function BroLabTask() {
   }
 
   // Add task
-  const handleAddTask = async (columnId: string, task: { title: string; description: string; assignees: string[] }) => {
+  const handleAddTask = async (_columnId: string, task: { title: string; description: string; assignees: string[] }) => {
     try {
-      const column = columns.find((c) => c.id === columnId)
+      const backlog = columns.find((c) => c.position === 0)
       await fetch("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...task,
-          columnId,
-          position: column?.tasks.length || 0,
+          position: backlog?.tasks.length || 0,
         }),
       })
       await fetchData()
@@ -2096,30 +2079,6 @@ export default function BroLabTask() {
   }
 
   return (
-<<<<<<< HEAD
-    <KanbanBoard
-      currentUser={currentUser}
-      team={team}
-      columns={columns}
-      notifications={notifications}
-      onLogout={handleLogout}
-      onUpdateUser={handleUpdateUser}
-      onAddTeamMember={handleAddTeamMember}
-      onDeleteTeamMember={handleDeleteTeamMember}
-      onAddColumn={handleAddColumn}
-      onDeleteColumn={handleDeleteColumn}
-      onAddTask={handleAddTask}
-      onUpdateTask={handleUpdateTask}
-      onDeleteTask={handleDeleteTask}
-      onMoveTask={handleMoveTask}
-      onAddComment={handleAddComment}
-      onMarkNotificationRead={handleMarkNotificationRead}
-      onClearAllNotifications={handleClearAllNotifications}
-      onCompleteTask={handleCompleteTask}
-      onArchiveTask={handleArchiveTask}
-      refreshData={fetchData}
-    />
-=======
     <>
       <KanbanBoard
         currentUser={currentUser}
@@ -2144,6 +2103,5 @@ export default function BroLabTask() {
       />
       <ToastContainer />
     </>
->>>>>>> parent of 6786381 (renomear função de middleware para proxy e ajustar lógica de autenticação)
   )
 }

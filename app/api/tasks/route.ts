@@ -116,8 +116,12 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { title, description, columnId, position, assignees, labels } =
-      await request.json()
+    const body = await request.json()
+    const parsed = validate(CreateTaskSchema, body)
+    if (parsed.error) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 })
+    }
+    const { title, description, position, assignees, labels } = parsed.data!
     const supabase = createAdminClient()
 
     if (!supabase) {
@@ -132,7 +136,7 @@ export async function POST(request: NextRequest) {
       .insert({
         title,
         description: description || "",
-        status: columnId || "BACKLOG",
+        column_position: 0, // always create in BACKLOG
         position: position || 0,
         assignees: assignees || [],
         labels: labels
