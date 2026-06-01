@@ -8,7 +8,7 @@ export const LoginSchema = z.object({
 export const CreateTaskSchema = z.object({
   title: z.string().min(1, "Título obrigatório"),
   description: z.string().optional().default(""),
-  columnId: z.string().optional(),
+  columnPosition: z.number().optional(),
   position: z.number().optional(),
   assignees: z.array(z.string()).optional().default([]),
   labels: z.array(z.object({ name: z.string(), color: z.string().optional() })).optional().default([]),
@@ -18,7 +18,7 @@ export const UpdateTaskSchema = z.object({
   id: z.string().uuid("ID inválido"),
   title: z.string().optional(),
   description: z.string().optional(),
-  columnId: z.string().optional(),
+  columnPosition: z.number().optional(),
   position: z.number().optional(),
   assignees: z.array(z.string()).optional(),
   labels: z.array(z.object({ name: z.string(), color: z.string().optional() })).optional(),

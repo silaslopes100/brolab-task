@@ -58,7 +58,7 @@ interface Task {
   id: string
   title: string
   description: string
-  columnId: string
+  columnPosition: number
   position: number
   assignees: string[]
   labels: Label[]
@@ -2150,7 +2150,7 @@ export default function BroLabTask() {
 
       const columnsWithTasks = columnsList.map((col: { id: string; name: string; position: number }) => ({
         ...col,
-        tasks: tasksList.filter((t: Task) => t.columnId === col.id).sort((a: Task, b: Task) => a.position - b.position),
+        tasks: tasksList.filter((t: Task) => t.columnPosition === col.position).sort((a: Task, b: Task) => a.position - b.position),
       }))
 
       setColumns(columnsWithTasks)
@@ -2347,7 +2347,7 @@ export default function BroLabTask() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...task,
-          columnId,
+          columnPosition: column?.position ?? 0,
           position: column?.tasks.length || 0,
         }),
       })
@@ -2390,7 +2390,7 @@ export default function BroLabTask() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: taskId,
-          columnId: toColumnId,
+          columnPosition: toColumn?.position ?? 0,
           position: newPosition !== undefined ? newPosition : toColumn?.tasks.length || 0,
         }),
       })

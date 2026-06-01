@@ -119,7 +119,7 @@ export async function GET(request: NextRequest) {
         id: task.id,
         title: task.title,
         description: task.description || "",
-        columnId: task.status,
+        columnPosition: task.column_position,
         position: task.position,
         createdAt: task.created_at,
         assignees: task.assignees || [],
@@ -163,7 +163,7 @@ export async function POST(request: NextRequest) {
     if (parsed.error) {
       return NextResponse.json({ error: parsed.error }, { status: 400 })
     }
-    const { title, description, columnId, position, assignees, labels } = parsed.data!
+    const { title, description, columnPosition, position, assignees, labels } = parsed.data!
     const supabase = createAdminClient()
 
     if (!supabase) {
@@ -178,7 +178,7 @@ export async function POST(request: NextRequest) {
       .insert({
         title,
         description: description || "",
-        status: columnId || "BACKLOG",
+        column_position: columnPosition ?? 0,
         position: position || 0,
         assignees: assignees || [],
         labels: labels
@@ -212,7 +212,7 @@ export async function POST(request: NextRequest) {
         id: task.id,
         title: task.title,
         description: task.description,
-        columnId: task.status,
+        columnPosition: task.column_position,
         position: task.position,
         createdAt: task.created_at,
         assignees: task.assignees || [],
@@ -243,7 +243,7 @@ export async function PATCH(request: NextRequest) {
     if (parsed.error) {
       return NextResponse.json({ error: parsed.error }, { status: 400 })
     }
-    const { id, title, description, columnId, position, assignees, labels } = parsed.data!
+    const { id, title, description, columnPosition, position, assignees, labels } = parsed.data!
     const supabase = createAdminClient()
 
     if (!supabase) {
@@ -256,7 +256,7 @@ export async function PATCH(request: NextRequest) {
     const updates: Record<string, unknown> = {}
     if (title !== undefined) updates.title = title
     if (description !== undefined) updates.description = description
-    if (columnId !== undefined) updates.status = columnId
+    if (columnPosition !== undefined) updates.column_position = columnPosition
     if (position !== undefined) updates.position = position
     if (assignees !== undefined) updates.assignees = assignees
     if (labels !== undefined)
