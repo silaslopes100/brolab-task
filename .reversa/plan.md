@@ -36,13 +36,19 @@
 
 ## Fase 4 — Geração (Writer)
 
-- [ ] **Writer** — Geração das especificações executáveis (requirements.md, design.md, tasks.md por módulo)
+- ✅ **Writer** — Geração de **126 specs** em 11 módulos + 3 globais (OpenAPI, user-stories, code-spec-matrix)
+  - Módulos: autenticação, tarefas, colunas, comentários, arquivos, upload, etiquetas, notificações, usuários, lib-supabase, kanban-app
+  - Globais: `openapi/`, `user-stories/`, `traceability/code-spec-matrix`
+  - 8 issues críticas identificadas: plaintext_password, no_auth_on_routes, labels_no_persistence, column_post_in_memory, column_delete_noop, label_get_hardcoded_empty, label_delete_noop, upload_window_reload
 
 ---
 
-## Fase 5 — Revisão (Reviewer) *(opcional)*
+## Fase 5 — Revisão (Reviewer)
 
-- [ ] **Reviewer** — Revisão cruzada das specs: inconsistências, reclassificação de confiança, perguntas para validação
+- ✅ **Reviewer** — Revisão cruzada: 82% de confiança geral, 26 gaps encontrados (8 críticos, 12 moderados, 6 cosméticos)
+  - Alta confiança: 9 módulos | Média confiança: 2 módulos
+  - 8 perguntas pendentes para validação
+  - 1 novo bug encontrado: `mention_username_prefix_mismatch`
 
 ---
 

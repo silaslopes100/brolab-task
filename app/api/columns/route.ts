@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 import { NextRequest, NextResponse } from "next/server"
+import { CreateColumnSchema, validate } from "@/lib/validation"
 
 export async function GET() {
   try {
@@ -31,7 +32,12 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { name, position } = await request.json()
+    const body = await request.json()
+    const parsed = validate(CreateColumnSchema, body)
+    if (parsed.error) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 })
+    }
+    const { name, position } = parsed.data!
     const supabase = createAdminClient()
 
     if (!supabase) {

@@ -40,7 +40,7 @@ O módulo de autenticação é responsável por verificar a identidade de um mem
 |----|-----------|------------|-------------------|
 | RF-01 | Aceitar POST com `{ identifier, password }` e localizar o membro por email | Must | Dado email e senha válidos → retorna HTTP 200 com `{ user }` |
 | RF-02 | Aceitar POST com `{ identifier, password }` e localizar o membro por @username quando não encontrado por email | Must | Dado @username e senha válidos → retorna HTTP 200 com `{ user }` |
-| RF-03 | Rejeitar credenciais inválidas com HTTP 401 e mensagem `"Invalid credentials"` | Must | Dado senha incorreta → retorna HTTP 401 |
+| RF-03 | Rejeitar credenciais inválidas com HTTP 401 e mensagem `"ERRO: CREDENCIAIS_INVÁLIDAS"` | Must | Dado senha incorreta → retorna HTTP 401 |
 | RF-04 | Retornar `isAdmin: true` para roles `ADMIN_TOTAL` e `ADMIN` | Must | Dado usuário com role `ADMIN` → `user.isAdmin === true` |
 | RF-05 | Retornar `isAdmin: false` para qualquer outro role | Must | Dado usuário com role `DEVELOPER` → `user.isAdmin === false` |
 | RF-06 | Retornar HTTP 405 para métodos diferentes de POST | Should | GET /api/auth/login → HTTP 405 |

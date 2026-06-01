@@ -2,10 +2,26 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { NextRequest, NextResponse } from "next/server"
 import bcrypt from "bcryptjs"
 import { signAccessToken, signRefreshToken } from "@/lib/auth/jwt"
+import { LoginSchema, validate } from "@/lib/validation"
+import { checkRateLimit } from "@/lib/rate-limit"
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, password } = await request.json()
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown"
+    const rateCheck = checkRateLimit(`login:${ip}`)
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        { error: "ERRO: MUITAS_TENTATIVAS_AGUARDE" },
+        { status: 429, headers: { "Retry-After": String(Math.ceil(rateCheck.resetInMs / 1000)) } },
+      )
+    }
+
+    const body = await request.json()
+    const parsed = validate(LoginSchema, body)
+    if (parsed.error) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 })
+    }
+    const { email, password } = parsed.data!
     const supabase = createAdminClient()
 
     if (!supabase) {

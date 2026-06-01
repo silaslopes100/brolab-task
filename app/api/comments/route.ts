@@ -1,9 +1,15 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { NextRequest, NextResponse } from "next/server"
+import { CreateCommentSchema, validate } from "@/lib/validation"
 
 export async function POST(request: NextRequest) {
   try {
-    const { taskId, subtaskId, authorUsername, content } = await request.json()
+    const body = await request.json()
+    const parsed = validate(CreateCommentSchema, body)
+    if (parsed.error) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 })
+    }
+    const { taskId, subtaskId, authorUsername, content } = parsed.data!
     const supabase = createAdminClient()
 
     if (!supabase) {

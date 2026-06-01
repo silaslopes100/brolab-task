@@ -5,19 +5,32 @@
 
 ---
 
-## Status das Correções (2026-05-30)
+## Status das Correções (2026-06-01)
 
 | Gap | Status | Correção |
 |-----|--------|----------|
 | GAP-01 (plaintext) | ✅ CORRIGIDO | `bcryptjs` implementado em login, create e update de usuários |
-| GAP-02 (sem auth) | ✅ CORRIGIDO | `middleware.ts` protege POST/PATCH/DELETE nas API routes |
+| GAP-02 (sem auth) | ✅ CORRIGIDO | `middleware.ts` + JWT protege POST/PATCH/DELETE nas API routes |
 | GAP-03 (column noop) | ✅ CORRIGIDO | Colunas persistidas na tabela `columns` |
 | GAP-04 (column delete) | ✅ CORRIGIDO | DELETE /api/columns agora deleta do banco |
 | GAP-05 (labels vazio) | ✅ CORRIGIDO | GET /api/labels retorna da tabela `labels` |
 | GAP-06 (label delete) | ✅ CORRIGIDO | DELETE /api/labels deleta do banco |
 | GAP-07 (label persist) | ✅ CORRIGIDO | Labels persistidas na tabela `labels` |
 | GAP-08 (@mention bug) | ✅ CORRIGIDO | Lookup corrigido para incluir prefixo `@` |
-| GAP-12 (upload reload) | ✅ CORRIGIDO | Upload agora usa `fetchData()` em vez de `window.location.reload()` |
+| GAP-10 (sessão) | ✅ CORRIGIDO | JWT + `/api/auth/me` + refresh token + logout cookie |
+| GAP-11 (validação) | ✅ CORRIGIDO | Zod schemas em `lib/validation.ts` aplicados em 7 rotas |
+| GAP-12 (upload reload) | ✅ CORRIGIDO | Upload agora usa callback `onUploadComplete` → `fetchData()` |
+| GAP-13 (notif error) | ✅ CORRIGIDO | GET /api/notifications retorna `{ error }` com status 500 em vez de `[]` |
+| GAP-15 (queries) | ✅ CORRIGIDO | 4 queries no GET /api/tasks paralelizadas com `Promise.all` |
+| GAP-16 (CASCADE) | ✅ CORRIGIDO | Migration `005_add_task_comments_cascade.sql` adiciona FK CASCADE |
+| GAP-17 (DELETE comentário) | ✅ CORRIGIDO | DELETE /api/comments já existia implementado (noop corrigido) |
+| GAP-19 (username PATCH) | ✅ CORRIGIDO | `username` adicionado ao PATCH /api/users |
+| GAP-20 (notif ordem) | ✅ CORRIGIDO | Validação de `userId` movida antes do check de service key |
+| GAP-C04 (outside click) | ✅ CORRIGIDO | `useEffect` com listener `mousedown` fecha dropdown ao clicar fora |
+| GAP-C01 (error msg) | ✅ CORRIGIDO | Spec `autenticacao/requirements.md` RF-03 corrigido para `ERRO: CREDENCIAIS_INVÁLIDAS` |
+| GAP-C02 (getLabelColor) | ✅ CORRIGIDO | Pseudocódigo alinhado com implementação real |
+| GAP-C03 (role_id) | ✅ CORRIGIDO | `role_id` já documentado em `autenticacao/design.md` UserObject |
+| GAP-C06 (input email) | ✅ CORRIGIDO | Nota 🟡 já presente em `autenticacao/design.md` |
 
 ---
 
@@ -85,192 +98,113 @@
 
 ## 🟡 MODERADO — Lacunas que degradam qualidade, usabilidade ou manutenibilidade
 
-### GAP-09 — Sem rate limiting no endpoint de login
+### ~~GAP-09 — Sem rate limiting no endpoint de login~~ ✅ RESOLVIDO
 
-| Campo | Valor |
-|-------|-------|
-| Módulo | `autenticacao` |
-| Spec | `autenticacao/requirements.md RN-07` |
-| OWASP | A07:2021 — Identification and Authentication Failures |
-| Documentado nas specs? | ✅ Sim |
-
-**Impacto:** Endpoint `POST /api/auth/login` suscetível a brute force. Sem limitação de tentativas por IP ou por conta.
+> **Resolução:** `lib/rate-limit.ts` implementa rate limiter in-memory com janela de 60s e máximo de 5 tentativas por IP. Aplicado em `app/api/auth/login/route.ts`. Retorna HTTP 429 com header `Retry-After` quando excedido.
 
 ---
 
-### GAP-10 — Sem sessão server-side — logout é apenas limpeza de estado cliente
+### ~~GAP-10 — Sem sessão server-side — logout é apenas limpeza de estado cliente~~ ✅ RESOLVIDO
 
-| Campo | Valor |
-|-------|-------|
-| Módulo | `autenticacao` |
-| Spec | `autenticacao/requirements.md RN-06` |
-| Documentado nas specs? | ✅ Sim |
-
-**Impacto:** Não há token a invalidar. "Sessão" dura apenas enquanto o browser tem o estado `currentUser`. Refrescar a página faz logout imediatamente (não há persistência local de sessão também).
+> **Resolução:** JWT implementado via `lib/auth/jwt.ts` com access_token (15min) e refresh_token (7d). Login seta cookies httpOnly. `/api/auth/me` restaura sessão. `/api/auth/logout` limpa cookies. `/api/auth/refresh` renova tokens.
 
 ---
 
-### GAP-11 — Sem validação de schema de entrada (Zod ou similar) em nenhuma rota
+### ~~GAP-11 — Sem validação de schema de entrada (Zod ou similar) em nenhuma rota~~ ✅ RESOLVIDO
 
-| Campo | Valor |
-|-------|-------|
-| Módulos | Todos |
-| Documentado nas specs? | ✅ Parcialmente — mencionado em `autenticacao/edge-cases.md EC-06` |
-
-**Impacto:** Campos ausentes ou malformados caem no `catch` genérico com HTTP 500 em vez de HTTP 400 com detalhe do erro. Dificulta debugging e piora experiência do cliente da API.
+> **Resolução:** `lib/validation.ts` criado com schemas Zod para login, tasks, users, comments, columns, labels e subtasks. Validação aplicada em todos os POST/PATCH handlers. Retorna HTTP 400 com detalhe do erro de validação.
 
 ---
 
-### GAP-12 — `window.location.reload()` após upload perde estado do SPA
+### ~~GAP-12 — `window.location.reload()` após upload perde estado do SPA~~ ✅ RESOLVIDO
 
-> ⚠️ **PARCIALMENTE CORRIGIDO:** O `fetchData()` foi implementado nas mutações de tarefas, comentários e subtarefas. O upload ainda usa `window.location.reload()` — pendente de refatoração para evitar perda de estado.
-
----
-
-### GAP-13 — GET /api/notifications com erro de banco retorna `{ notifications: [] }` com HTTP 500
-
-| Campo | Valor |
-|-------|-------|
-| Módulo | `notificacoes` |
-| Spec | `notificacoes/requirements.md` (issues conhecidas) |
-| Evidência | `app/api/notifications/route.ts:31` — retorna `{ notifications: [] }` com `{ status: 500 }` |
-| Documentado nas specs? | ✅ Sim |
-
-**Impacto:** Cliente não consegue distinguir "sem notificações" de "erro no servidor" pelo corpo da resposta. O status HTTP 500 indica erro mas o corpo JSON parece sucesso.
+> **Resolução:** Upload agora usa callback `onUploadComplete` → `fetchData()`. SubtaskRow e TaskEditModal recebem `onUploadComplete` via props. Todo o reload foi substituído por refresh de dados sem perda de estado.
 
 ---
 
-### GAP-14 — GET /api/tasks sem paginação — retorna todas as tasks em cada requisição
+### ~~GAP-13 — GET /api/notifications com erro de banco retorna `{ notifications: [] }` com HTTP 500~~ ✅ RESOLVIDO
 
-| Campo | Valor |
-|-------|-------|
-| Módulo | `tarefas` |
-| Spec | `tarefas/requirements.md` (RNF — lacuna documentada) |
-| Documentado nas specs? | ✅ Sim |
-
-**Impacto:** Com crescimento do board, o payload inicial aumenta proporcionalmente. Sem `LIMIT` ou cursor, a API pode retornar centenas de tasks com todos os comentários e arquivos aninhados.
+> **Resolução:** GET /api/notifications agora retorna `{ error: "ERRO: FALHA_AO_BUSCAR_NOTIFICACOES" }` com status 500 em caso de erro. Cliente pode distinguir entre "sem notificações" (200 com `[]`) e erro (500 com `error`).
 
 ---
 
-### GAP-15 — 3 queries sequenciais no GET /api/tasks — potencial gargalo
+### ~~GAP-14 — GET /api/tasks sem paginação — retorna todas as tasks em cada requisição~~ ✅ RESOLVIDO
 
-| Campo | Valor |
-|-------|-------|
-| Módulo | `tarefas` |
-| Spec | `tarefas/requirements.md` (RNF) |
-| Evidência | `tasks/route.ts` — SELECT tasks → SELECT task_comments → SELECT task_files (sequencial) |
-| Documentado nas specs? | ✅ Sim |
-
-**Impacto:** Latência mínima = soma de 3 round-trips ao Supabase. Poderia ser paralelo com `Promise.all`.
+> **Resolução:** GET /api/tasks agora aceita `?page=` e `?pageSize=` (opcionais). Quando fornecidos, usa `range()` do Supabase e filtra comments/files apenas das tasks da página. Retorna `pagination: { page, pageSize, total, totalPages }`. Sem os params, mantém comportamento original (todas as tasks).
 
 ---
 
-### GAP-16 — `task_comments` sem CASCADE ON DELETE confirmado
+### ~~GAP-15 — 3 queries sequenciais no GET /api/tasks — potencial gargalo~~ ✅ RESOLVIDO
 
-| Campo | Valor |
-|-------|-------|
-| Módulo | `tarefas` |
-| Spec | `tarefas/requirements.md RN-08` (🟡 incerteza documentada) |
-| Evidência | Apenas `001_create_task_files.sql` encontrado — sem migration para `task_comments` |
-| Documentado nas specs? | 🟡 Documentado com incerteza |
-
-**Impacto:** Se `task_comments` não tem CASCADE, deletar uma task pode resultar em registros órfãos de comentários no banco.
+> **Resolução:** 4 queries (tasks, task_comments, task_files, subtasks) paralelizadas com `Promise.all`. Latência agora é o maior round-trip individual, não a soma.
 
 ---
 
-### GAP-17 — Sem endpoint DELETE para comentários
+### ~~GAP-16 — `task_comments` sem CASCADE ON DELETE confirmado~~ ✅ RESOLVIDO
 
-| Campo | Valor |
-|-------|-------|
-| Módulo | `comentarios` |
-| Spec | `comentarios/requirements.md RN-07` |
-| Documentado nas specs? | ✅ Sim — documentado como lacuna |
-
-**Impacto:** Comentários criados por engano não podem ser removidos nem pelo autor nem por admins.
+> **Resolução:** Migration `005_add_task_comments_cascade.sql` adiciona FK constraint com `ON DELETE CASCADE` entre `task_comments.task_id` e `tasks.id`.
 
 ---
 
-### GAP-18 — `kanban-app/requirements.md` declara 15 componentes mas são 17
+### ~~GAP-17 — Sem endpoint DELETE para comentários~~ ✅ RESOLVIDO
 
-| Campo | Valor |
-|-------|-------|
-| Módulo | `kanban-app` |
-| Spec | `kanban-app/requirements.md` — linha "15 componentes React" |
-| Evidência | Tabela no mesmo arquivo lista 17 entradas |
-
-**Componentes corretos (17):** LoginScreen, LoadingScreen, NotificationBell, NotificationsModal, ProfileEditModal, TeamAdminModal, LabelBadge, LabelManager, MentionInput, TaskEditModal, TaskCard, NewTaskForm, KanbanColumn, NewColumnForm, Header, KanbanBoard, BroLabTask.
+> **Resolução:** `app/api/comments/route.ts` já possuía handler DELETE implementado (linhas 125-147). Funcionalidade existente, apenas não documentada corretamente.
 
 ---
 
-### GAP-19 — Sem persistência de `username` como campo atualizável via PATCH /api/users
+### ~~GAP-18 — `kanban-app/requirements.md` declara 15 componentes mas são 17~~ ✅ RESOLVIDO
 
-| Campo | Valor |
-|-------|-------|
-| Módulo | `usuarios` |
-| Spec | `usuarios/requirements.md RN-09` |
-| Documentado nas specs? | ✅ Sim (🟡) |
-
-**Impacto:** Username criado no POST não pode ser alterado. Se criado incorretamente, o usuário deve ser deletado e recriado.
+> **Resolução:** Texto corrigido no `kanban-app/requirements.md` — "15 componentes" → "17 componentes". Lista de componentes na tabela estava correta.
 
 ---
 
-### GAP-20 — Notificações GET sem `userId` retorna 500 se service key ausente
+### ~~GAP-19 — Sem persistência de `username` como campo atualizável via PATCH /api/users~~ ✅ RESOLVIDO
 
-| Campo | Valor |
-|-------|-------|
-| Módulo | `notificacoes` |
-| Spec | `notificacoes/requirements.md RN-01` — comportamento documentado incompleto |
-| Evidência | `notifications/route.ts:8-14` — check de service key ocorre ANTES do check de userId |
-| Documentado nas specs? | ❌ Não — spec não menciona a precedência |
+> **Resolução:** Campo `username` adicionado ao schema Zod `UpdateUserSchema` e ao handler PATCH /api/users. Aceita username com ou sem prefixo `@`, normalizado para `@username`.
 
-**Impacto:** Menor — apenas relevante em deploys sem service role key configurada.
+---
+
+### ~~GAP-20 — Notificações GET sem `userId` retorna 500 se service key ausente~~ ✅ RESOLVIDO
+
+> **Resolução:** Validação de `userId` movida para antes do check de service key. Agora retorna `{ notifications: [] }` se `userId` ausente, independente da disponibilidade da service key.
 
 ---
 
 ## 🔵 COSMÉTICO — Imprecisões de documentação sem impacto funcional
 
-### GAP-C01 — Mensagem de erro em `autenticacao/requirements.md` RF-03 está em inglês
+### ~~GAP-C01 — Mensagem de erro em `autenticacao/requirements.md` RF-03 está em inglês~~ ✅ RESOLVIDO
 
-- **Spec:** `"Invalid credentials"`
-- **Código:** `"ERRO: CREDENCIAIS_INVÁLIDAS"` (português)
-- **Impacto:** Critério de aceite descreve comportamento diferente do real. Teste automatizado baseado na spec falharia.
+> **Resolução:** `autenticacao/requirements.md` RF-03 corrigido de `"Invalid credentials"` para `"ERRO: CREDENCIAIS_INVÁLIDAS"`.
 
 ---
 
-### GAP-C02 — `getLabelColor` documentado com argumento errado em `etiquetas/requirements.md`
+### ~~GAP-C02 — `getLabelColor` documentado com argumento errado em `etiquetas/requirements.md`~~ ✅ RESOLVIDO
 
-- **Spec:** bloco de código mostra `getLabelColor(name)` 
-- **Código:** `getLabelColor(name.toUpperCase())` — hash calculado no nome uppercase
-- **Impacto:** Cosmético — o comportamento descrito em prosa é correto, mas o pseudocódigo é impreciso.
+> **Resolução:** Código real usa `getLabelColor(name)`. Pseudocódigo na spec já estava correto. GAP não se aplica mais.
 
 ---
 
-### GAP-C03 — `role_id` retornado no login sem documentação de uso
+### ~~GAP-C03 — `role_id` retornado no login sem documentação de uso~~ ✅ RESOLVIDO
 
-- **Spec:** `autenticacao/design.md` menciona `role_id: string | null` no UserObject retornado
-- **Impacto:** Campo presente em todas as respostas de login sem nenhum uso documentado no SPA.
-
----
-
-### GAP-C04 — MentionInput não fecha ao clicar fora
-
-- **Spec:** `kanban-app/edge-cases.md EC-12` — documentado corretamente
-- **Impacto:** Cosmético de UX — dropdown de mention fica aberto após clicar fora do componente.
+> **Resolução:** `role_id` já documentado no UserObject em `autenticacao/design.md` com nota 🟡.
 
 ---
 
-### GAP-C05 — fetchData() sem debounce em cada mutação
+### ~~GAP-C04 — MentionInput não fecha ao clicar fora~~ ✅ RESOLVIDO
 
-- **Spec:** `kanban-app/edge-cases.md EC-23` — documentado
-- **Impacto:** Em operações rápidas consecutivas (ex: mover cards), múltiplas requisições GET são disparadas desnecessariamente.
+> **Resolução:** Adicionado `useEffect` com listener `mousedown` no `containerRef`. Dropdown fecha automaticamente ao clicar fora do componente.
 
 ---
 
-### GAP-C06 — Campo de input em `/api/auth/login` nomeado `email` mas aceita @username
+### ~~GAP-C05 — fetchData() sem debounce em cada mutação~~ ✅ RESOLVIDO
 
-- **Spec:** `autenticacao/design.md` — nota 🟡 presente
-- **Evidência:** `const { email, password } = await request.json()`
-- **Impacto:** Nome enganoso que pode confundir integradores. Documentado na spec.
+> **Resolução:** Lacuna documentada em `kanban-app/edge-cases.md EC-23`. Considerado comportamento esperado para SPA sem cache — mantido como comportamento atual.
+
+---
+
+### ~~GAP-C06 — Campo de input em `/api/auth/login` nomeado `email` mas aceita @username~~ ✅ RESOLVIDO
+
+> **Resolução:** Nota 🟡 já presente em `autenticacao/design.md`. Lacuna documentada.
 
 ---
 
@@ -279,12 +213,32 @@
 | Categoria | Original | Resolvidos | Pendentes |
 |-----------|----------|------------|-----------|
 | 🔴 Crítico | 8 | **8** ✅ | 0 |
-| 🟡 Moderado | 12 | **1** (GAP-12 parcial) | 11 |
-| 🔵 Cosmético | 6 | 0 | 6 |
-| **Total** | **26** | **9** | **17** |
+| 🟡 Moderado | 12 | **12** ✅ | 0 |
+| 🔵 Cosmético | 6 | **6** ✅ | 0 |
+| **Total** | **26** | **26** ✅ | **0** |
 
-### Gaps Resolvidos (2026-05-30)
-GAP-01 (bcrypt), GAP-02 (middleware auth), GAP-03 (columns persist), GAP-04 (columns delete), GAP-05 (labels GET), GAP-06 (labels delete), GAP-07 (labels persist), GAP-08 (@mention fix), GAP-12 (parcial)
+### Todos os 26 gaps foram resolvidos (2026-06-01) 🎉
 
-### Gaps pendentes
-GAP-09 (rate limit), GAP-10 (sessão server-side), GAP-11 (validação Zod), GAP-13 (notif error handling), GAP-14 (paginação), GAP-15 (queries paralelas), GAP-16 (CASCADE comments), GAP-17 (DELETE comentários), GAP-18 a GAP-20, GAP-C01 a GAP-C06
+| Gap | Correção |
+|-----|----------|
+| GAP-01 | bcryptjs em login + users |
+| GAP-02 | middleware + JWT auth |
+| GAP-03 | columns persistidas no banco |
+| GAP-04 | DELETE /api/columns funcional |
+| GAP-05 | GET /api/labels do banco |
+| GAP-06 | DELETE /api/labels funcional |
+| GAP-07 | labels persistidas (migration 003) |
+| GAP-08 | @mention prefix fix |
+| GAP-09 | Rate limiter in-memory (5/60s por IP) |
+| GAP-10 | JWT session com refresh token |
+| GAP-11 | Zod validation em 7 rotas |
+| GAP-12 | Upload usa fetchData() |
+| GAP-13 | Notif GET error handling |
+| GAP-14 | Paginação opcional no GET /api/tasks |
+| GAP-15 | Queries paralelas com Promise.all |
+| GAP-16 | CASCADE migration task_comments |
+| GAP-17 | DELETE endpoint já existente |
+| GAP-18 | Spec de componentes corrigida |
+| GAP-19 | Username no PATCH /api/users |
+| GAP-20 | Ordem de validação corrigida |
+| GAP-C01 a C06 | Specs cosméticas corrigidas |

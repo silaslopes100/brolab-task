@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 import { NextRequest, NextResponse } from "next/server"
+import { CreateTaskSchema, UpdateTaskSchema, validate } from "@/lib/validation"
 
 const BUCKET_NAME = "task-files"
 
@@ -22,25 +23,50 @@ function getLabelColor(name: string): string {
   return LABEL_COLORS[Math.abs(hash) % LABEL_COLORS.length]
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const supabase = createAdminClient() ?? (await createClient())
 
-    const { data: tasks, error } = await supabase
-      .from("tasks")
-      .select("*")
-      .order("position", { ascending: true })
+    const { searchParams } = new URL(request.url)
+    const pageParam = searchParams.get("page")
+    const pageSizeParam = searchParams.get("pageSize")
+    const page = pageParam ? Math.max(1, parseInt(pageParam, 10) || 1) : 1
+    const pageSize = pageSizeParam ? Math.min(100, Math.max(1, parseInt(pageSizeParam, 10) || 50)) : 0
+    const hasPagination = pageParam !== null
 
-    if (error) throw error
+    const [{ count: totalTasks }, tasksResult] = await Promise.all([
+      hasPagination
+        ? supabase.from("tasks").select("*", { count: "exact", head: true })
+        : Promise.resolve({ count: null, error: null }),
+      hasPagination
+        ? supabase.from("tasks").select("*").order("position", { ascending: true }).range((page - 1) * pageSize, page * pageSize - 1)
+        : supabase.from("tasks").select("*").order("position", { ascending: true }),
+    ])
 
-    const { data: comments, error: commentsError } = await supabase
-      .from("task_comments")
-      .select("*")
-      .order("created_at", { ascending: true })
+    const { data: tasks, error: tasksError } = tasksResult
+    if (tasksError) throw tasksError
 
+    const taskIds = (tasks || []).map((t) => t.id)
+
+    const [commentsResult, taskFilesResult, subtasksResult] = taskIds.length > 0 ? await Promise.all([
+      supabase.from("task_comments").select("*").in("task_id", taskIds).order("created_at", { ascending: true }),
+      supabase.from("task_files").select("*").in("task_id", taskIds).order("created_at", { ascending: true }),
+      supabase.from("subtasks").select("id, task_id, estimated_hours, time_spent, timer_started_at, status").in("task_id", taskIds),
+    ]) : [
+      { data: null, error: null },
+      { data: null, error: null },
+      { data: null, error: null },
+    ]
+
+    const { data: comments, error: commentsError } = commentsResult
     if (commentsError) throw commentsError
 
-    const commentsByTaskId: Record<string, typeof comments> = {}
+    const { data: taskFiles, error: filesError } = taskFilesResult
+    if (filesError) throw filesError
+
+    const { data: allSubtasks } = subtasksResult
+
+    const commentsByTaskId: Record<string, any[]> = {}
     if (comments) {
       for (const c of comments) {
         if (!commentsByTaskId[c.task_id]) commentsByTaskId[c.task_id] = []
@@ -48,14 +74,7 @@ export async function GET() {
       }
     }
 
-    const { data: taskFiles, error: filesError } = await supabase
-      .from("task_files")
-      .select("*")
-      .order("created_at", { ascending: true })
-
-    if (filesError) throw filesError
-
-    const filesByTaskId: Record<string, typeof taskFiles> = {}
+    const filesByTaskId: Record<string, any[]> = {}
     if (taskFiles) {
       for (const f of taskFiles) {
         if (!filesByTaskId[f.task_id]) filesByTaskId[f.task_id] = []
@@ -63,12 +82,8 @@ export async function GET() {
       }
     }
 
-    const { data: allSubtasks, error: subtasksError } = await supabase
-      .from("subtasks")
-      .select("id, task_id, estimated_hours, time_spent, timer_started_at, status")
-
     const subtaskAggByTaskId: Record<string, { count: number; totalEstimated: number; totalTimeSpent: number }> = {}
-    if (!subtasksError && allSubtasks) {
+    if (allSubtasks) {
       for (const st of allSubtasks) {
         if (!subtaskAggByTaskId[st.task_id]) {
           subtaskAggByTaskId[st.task_id] = { count: 0, totalEstimated: 0, totalTimeSpent: 0 }
@@ -127,7 +142,11 @@ export async function GET() {
       }
     })
 
-    return NextResponse.json({ tasks: formattedTasks })
+    const response: Record<string, unknown> = { tasks: formattedTasks }
+    if (hasPagination) {
+      response.pagination = { page, pageSize, total: totalTasks || 0, totalPages: Math.ceil((totalTasks || 0) / pageSize) }
+    }
+    return NextResponse.json(response)
   } catch (err) {
     console.error("Error fetching tasks:", err)
     return NextResponse.json(
@@ -139,8 +158,12 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { title, description, columnId, position, assignees, labels } =
-      await request.json()
+    const body = await request.json()
+    const parsed = validate(CreateTaskSchema, body)
+    if (parsed.error) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 })
+    }
+    const { title, description, columnId, position, assignees, labels } = parsed.data!
     const supabase = createAdminClient()
 
     if (!supabase) {
@@ -215,8 +238,12 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const { id, title, description, columnId, position, assignees, labels } =
-      await request.json()
+    const body = await request.json()
+    const parsed = validate(UpdateTaskSchema, body)
+    if (parsed.error) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 })
+    }
+    const { id, title, description, columnId, position, assignees, labels } = parsed.data!
     const supabase = createAdminClient()
 
     if (!supabase) {

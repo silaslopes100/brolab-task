@@ -6,16 +6,16 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const userId = searchParams.get("userId")
 
+  if (!userId) {
+    return NextResponse.json({ notifications: [] })
+  }
+
   const supabase = createAdminClient()
   if (!supabase) {
     return NextResponse.json(
       { error: "ERRO: SUPABASE_SERVICE_ROLE_KEY_NAO_CONFIGURADA" },
       { status: 500 },
     )
-  }
-
-  if (!userId) {
-    return NextResponse.json({ notifications: [] })
   }
 
   const { data, error } = await supabase
@@ -26,7 +26,10 @@ export async function GET(request: Request) {
 
   if (error) {
     console.error("Error fetching notifications:", error)
-    return NextResponse.json({ notifications: [] }, { status: 500 })
+    return NextResponse.json(
+      { error: "ERRO: FALHA_AO_BUSCAR_NOTIFICACOES" },
+      { status: 500 },
+    )
   }
 
   const notifications = (data ?? []).map((n) => ({

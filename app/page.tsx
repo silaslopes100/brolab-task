@@ -720,6 +720,17 @@ function MentionInput({
   const [showMentions, setShowMentions] = useState(false)
   const [mentionFilter, setMentionFilter] = useState("")
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setShowMentions(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = e.target.value
@@ -757,7 +768,7 @@ function MentionInput({
   )
 
   return (
-    <div className="relative">
+    <div ref={containerRef} className="relative">
       <textarea
         ref={inputRef}
         value={value}
@@ -796,12 +807,14 @@ function SubtaskRow({
   subtask,
   onUpdateStatus,
   onAddComment,
+  onUploadComplete,
   currentUser,
   team,
 }: {
   subtask: Subtask
   onUpdateStatus: (id: string, newStatus: string) => void
   onAddComment: (subtaskId: string, content: string) => void
+  onUploadComplete?: () => void
   currentUser: TeamMember
   team: TeamMember[]
 }) {
@@ -929,7 +942,7 @@ function SubtaskRow({
                 formData.append("subtaskId", subtask.id)
                 try {
                   const res = await fetch("/api/upload", { method: "POST", body: formData })
-                  if (res.ok) window.location.reload()
+                  if (res.ok) { if (onUploadComplete) onUploadComplete() }
                 } catch (err) { console.error("Upload failed:", err) }
               }} />
           </label>
@@ -948,6 +961,7 @@ function TaskEditModal({
   onSave,
   onAddComment,
   onEditComment,
+  onUploadComplete,
 }: {
   task: Task
   team: TeamMember[]
@@ -956,6 +970,7 @@ function TaskEditModal({
   onSave: (updates: Partial<Task>) => void
   onAddComment: (content: string, mentions: string[]) => void
   onEditComment?: (commentId: string, content: string) => void
+  onUploadComplete?: () => void
 }) {
   const [title, setTitle] = useState(task.title)
   const [description, setDescription] = useState(task.description)
@@ -1181,6 +1196,7 @@ function TaskEditModal({
                     subtask={st}
                     onUpdateStatus={handleSubtaskStatusUpdate}
                     onAddComment={handleSubtaskComment}
+                    onUploadComplete={onUploadComplete}
                     currentUser={currentUser}
                     team={team}
                   />
@@ -1242,7 +1258,7 @@ function TaskEditModal({
                     formData.append("taskId", task.id)
                     try {
                       const res = await fetch("/api/upload", { method: "POST", body: formData })
-                      if (res.ok) window.location.reload()
+                      if (res.ok) { if (onUploadComplete) onUploadComplete() }
                     } catch (err) { console.error("Upload failed:", err) }
                   }} />
               </label>
@@ -1523,6 +1539,7 @@ function KanbanColumn({
   onMoveTask: (taskId: string, direction: "left" | "right") => void
   onMoveTaskVertical: (taskId: string, direction: "up" | "down") => void
   onDeleteTask: (taskId: string) => void
+  onDeleteColumn: () => void
   onEditTask: (task: Task) => void
   onCancelTask?: (task: Task) => void
   isDefault: boolean
@@ -1958,6 +1975,7 @@ function KanbanBoard({
           onEditComment={(commentId, content) => {
             onEditComment(editingTask.task.id, commentId, content)
           }}
+          onUploadComplete={refreshData}
         />
       )}
 

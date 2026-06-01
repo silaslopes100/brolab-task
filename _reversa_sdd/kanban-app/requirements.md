@@ -7,7 +7,7 @@
 
 ## Visão Geral
 
-Arquivo principal da aplicação. Single-file React Client Component que implementa toda a UI e orquestra chamadas à API. Contém 15 componentes React, todos definidos no mesmo arquivo. Design system proprietário: tema hacker verde (`#00FF66`) sobre fundo preto. 🟢
+Arquivo principal da aplicação. Single-file React Client Component que implementa toda a UI e orquestra chamadas à API. Contém 17 componentes React, todos definidos no mesmo arquivo. Design system proprietário: tema hacker verde (`#00FF66`) sobre fundo preto. 🟢
 
 ---
 
@@ -106,7 +106,7 @@ useEffect(subscribeNotifications) [depende de currentUser]
 - RN-01: `isAdmin = role === "ADMIN_TOTAL" || role === "ADMIN"` (calculado pelo backend, lido no frontend) 🟢
 - RN-02: Labels criadas localmente com `Date.now().toString()` como id — **não persistidas via API** 🔴
 - RN-03: Labels gerenciadas como estado local da task no modal; salvas junto com o `PATCH /api/tasks` em `labels: Label[]` 🟢
-- RN-04: Upload de arquivo usa `window.location.reload()` após sucesso 🟡 (recarrega toda a app)
+- RN-04: Upload de arquivo dispara `fetchData()` via callback `onUploadComplete` para recarregar dados sem perda de estado 🟢
 - RN-05: Realtime via `createClient()` browser — canal por usuário autenticado 🟢
 - RN-06: `handleMoveTask` horizontal: calcula `toColumnId` pelo índice adjacente 🟢
 - RN-07: `handleMoveTask` vertical: reenvia `PATCH` com mesmo `columnId` e `newPosition` 🟢
@@ -120,10 +120,9 @@ useEffect(subscribeNotifications) [depende de currentUser]
 | Severidade | Problema |
 |-----------|---------|
 | 🔴 CRÍTICO | Labels locais criadas com `Date.now()` — não persistem entre sessões |
-| 🔴 CRÍTICO | Upload chama `window.location.reload()` — perde estado da sessão |
 | 🟡 ALTO | `fetchData()` chamado após cada mutação — sem cache/otimismo |
 | 🟡 ALTO | `mentions` extraído no handler `handleAddComment` mas ignorado pelo POST — servidor refaz a extração |
-| 🟡 MÉDIO | Arquivo único de ~1960 LOC — alta complexidade ciclomática |
+| 🟡 MÉDIO | Arquivo único de ~2481 LOC — alta complexidade ciclomática |
 
 ---
 
