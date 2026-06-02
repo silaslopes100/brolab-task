@@ -99,6 +99,8 @@ export async function GET() {
           mentions: [],
         })),
         files,
+        is_completed: task.is_completed ?? false,
+        is_archived: task.is_archived ?? false,
       }
     })
 
@@ -158,6 +160,8 @@ export async function POST(request: NextRequest) {
         })),
         comments: [],
         files: [],
+        is_completed: task.is_completed ?? false,
+        is_archived: task.is_archived ?? false,
       },
     })
   } catch (err) {
@@ -171,8 +175,8 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const { id, title, description, columnId, position, assignees, labels } =
-      await request.json()
+    const body = await request.json()
+    const { id, title, description, columnId, position, assignees, labels, is_completed, is_archived } = body
     const supabase = createAdminClient()
 
     if (!supabase) {
@@ -190,6 +194,8 @@ export async function PATCH(request: NextRequest) {
     if (assignees !== undefined) updates.assignees = assignees
     if (labels !== undefined)
       updates.labels = labels.map((l: { name: string }) => l.name)
+    if (is_completed !== undefined) updates.is_completed = is_completed
+    if (is_archived !== undefined) updates.is_archived = is_archived
 
     if (Object.keys(updates).length > 0) {
       const { error: taskError } = await supabase

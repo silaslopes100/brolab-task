@@ -38,6 +38,8 @@ interface Task {
   comments: Comment[]
   files: TaskFile[]
   createdAt: string
+  is_completed?: boolean
+  is_archived?: boolean
 }
 
 interface Column {
@@ -68,15 +70,15 @@ interface Notification {
 }
 
 // ==================== LABEL COLORS ====================
-const LABEL_COLORS = [
-  { name: "Branca", value: "#FFFFFF" },
-  { name: "Cinza", value: "#6B7280" },
-  { name: "Verde Limão", value: "#84CC16" },
-  { name: "Verde Pistache", value: "#A3E635" },
-  { name: "Laranja Forte", value: "#F97316" },
-  { name: "Vermelho", value: "#EF4444" },
-  { name: "Verde Folha", value: "#22C55E" },
-]
+const LABEL_COLORS: Record<string, string> = {
+  Branca: "bg-white text-black",
+  Cinza: "bg-neutral-500 text-white",
+  "Verde Limão": "bg-lime-400 text-black",
+  "Verde Pistache": "bg-emerald-300 text-black",
+  "Laranja Forte": "bg-orange-600 text-white",
+  Vermelho: "bg-red-600 text-white",
+  "Verde Folha": "bg-green-700 text-white",
+};
 
 // ==================== DEFAULT COLUMN IDS ====================
 const DEFAULT_COLUMN_NAMES = ["BACKLOG", "FAZENDO", "ALTERAÇÕES", "APROVADO", "FEITO"]
@@ -563,18 +565,9 @@ function TeamAdminModal({
 
 // ==================== LABEL BADGE ====================
 function LabelBadge({ label }: { label: Label }) {
-  const isDark = label.color === "#FFFFFF" || label.color === "#A3E635" || label.color === "#84CC16"
   return (
-    <span
-      className="px-2 py-0.5 text-xs font-bold"
-      style={{
-        backgroundColor: label.color,
-        color: isDark ? "#000000" : "#FFFFFF",
-      }}
-    >
-      {label.name}
-    </span>
-  )
+    <span className={`px-2 py-0.5 text-xs font-bold ${LABEL_COLORS[label.name] || 'bg-gray-500 text-white'}`}>{label.name}</span>
+  );
 }
 
 // ==================== LABEL MANAGER ====================
@@ -582,14 +575,21 @@ function LabelManager({
   labels,
   onAdd,
   onRemove,
+  allLabels,
 }: {
   labels: Label[]
   onAdd: (label: Label) => void
   onRemove: (id: string) => void
+  allLabels: Label[]
 }) {
   const [showForm, setShowForm] = useState(false)
   const [newName, setNewName] = useState("")
-  const [selectedColor, setSelectedColor] = useState(LABEL_COLORS[0].value)
+  const [selectedColor, setSelectedColor] = useState(Object.values(LABEL_COLORS)[0])
+  const [showExisting, setShowExisting] = useState(false)
+
+  const uniqueExistingLabels = allLabels.filter(
+    (al) => !labels.some((l) => l.name === al.name)
+  )
 
   const handleAdd = () => {
     if (newName.trim()) {
@@ -599,8 +599,14 @@ function LabelManager({
         color: selectedColor,
       })
       setNewName("")
-      setSelectedColor(LABEL_COLORS[0].value)
+      setSelectedColor(Object.values(LABEL_COLORS)[0])
       setShowForm(false)
+    }
+  }
+
+  const handleAddExisting = (label: Label) => {
+    if (!labels.some((l) => l.name === label.name)) {
+      onAdd({ ...label, id: Date.now().toString() })
     }
   }
 
@@ -622,12 +628,37 @@ function LabelManager({
       </div>
 
       {!showForm ? (
-        <button
-          onClick={() => setShowForm(true)}
-          className="w-full h-10 border border-dashed border-[#262626] text-[#00FF66]/50 text-xs hover:border-[#00FF66] hover:text-[#00FF66] transition-colors"
-        >
-          [ + ADD_LABEL ]
-        </button>
+        <div className="space-y-2">
+          <button
+            onClick={() => { setShowForm(true); setShowExisting(false); }}
+            className="w-full h-10 border border-dashed border-[#262626] text-[#00FF66]/50 text-xs hover:border-[#00FF66] hover:text-[#00FF66] transition-colors"
+          >
+            [ + ADD_LABEL ]
+          </button>
+          {uniqueExistingLabels.length > 0 && (
+            <>
+              <button
+                onClick={() => setShowExisting(!showExisting)}
+                className="w-full h-8 border border-dashed border-[#262626] text-[#00FF66]/30 text-xs hover:border-[#00FF66] hover:text-[#00FF66] transition-colors"
+              >
+                {showExisting ? "[ - OCULTAR_EXISTENTES ]" : `[ CARREGAR_EXISTENTES (${uniqueExistingLabels.length}) ]`}
+              </button>
+              {showExisting && (
+                <div className="flex flex-wrap gap-2 p-2 border border-[#262626]">
+                  {uniqueExistingLabels.map((label) => (
+                    <button
+                      key={label.id}
+                      onClick={() => handleAddExisting(label)}
+                      className="cursor-pointer hover:opacity-80 transition-opacity"
+                    >
+                      <LabelBadge label={label} />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
       ) : (
         <div className="space-y-3 border border-[#00FF66] p-3">
           <input
@@ -638,19 +669,16 @@ function LabelManager({
             className="w-full h-10 px-3 bg-[#1A1A1A] border border-[#262626] text-white text-sm placeholder:text-[#00FF66]/30 focus:border-[#00FF66] focus:outline-none"
           />
           <div className="flex flex-wrap gap-2">
-            {LABEL_COLORS.map((color) => (
-              <button
-                key={color.value}
-                onClick={() => setSelectedColor(color.value)}
-                className={`w-8 h-8 border-2 transition-colors ${
-                  selectedColor === color.value
-                    ? "border-[#00FF66]"
-                    : "border-transparent"
-                }`}
-                style={{ backgroundColor: color.value }}
-                title={color.name}
-              />
-            ))}
+{Object.entries(LABEL_COLORS).map(([name, className]) => (
+  <button
+    key={name}
+    onClick={() => setSelectedColor(className)}
+    className={`w-8 h-8 border-2 transition-colors ${
+      selectedColor === className ? "border-[#00FF66]" : "border-transparent"
+    } ${className}`}
+    title={name}
+  />
+))}
           </div>
           <div className="flex gap-2">
             <button
@@ -769,6 +797,9 @@ function TaskEditModal({
   onClose,
   onSave,
   onAddComment,
+  onComplete,
+  onArchive,
+  allLabels,
 }: {
   task: Task
   team: TeamMember[]
@@ -776,6 +807,9 @@ function TaskEditModal({
   onClose: () => void
   onSave: (updates: Partial<Task>) => void
   onAddComment: (content: string, mentions: string[]) => void
+  onComplete?: () => void
+  onArchive?: () => void
+  allLabels: Label[]
 }) {
   const [title, setTitle] = useState(task.title)
   const [description, setDescription] = useState(task.description)
@@ -803,13 +837,37 @@ function TaskEditModal({
     }
   }
 
-  const toggleAssignee = (name: string) => {
-    if (assignees.includes(name)) {
-      setAssignees(assignees.filter((a) => a !== name))
-    } else {
-      setAssignees([...assignees, name])
-    }
+const toggleAssignee = (name: string) => {
+  if (assignees.includes(name)) {
+    setAssignees(assignees.filter((a) => a !== name))
+  } else {
+    setAssignees([...assignees, name])
   }
+}
+
+// AI enhancement state and handler
+const [isProcessingAI, setIsProcessingAI] = useState(false);
+const handleAIEnhance = async () => {
+  if (!description.trim()) return;
+  setIsProcessingAI(true);
+  try {
+    const res = await fetch('/api/enhance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: description }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.enhanced) {
+        setDescription(data.enhanced);
+      }
+    }
+  } catch (e) {
+    console.error('AI enhance failed', e);
+  } finally {
+    setIsProcessingAI(false);
+  }
+}
 
   return (
     <div className="fixed inset-0 bg-black z-50 overflow-y-auto">
@@ -817,20 +875,34 @@ function TaskEditModal({
         <div className="border-2 border-[#00FF66] bg-black max-w-3xl mx-auto">
           <div className="border-b border-[#00FF66] p-4 flex justify-between items-center sticky top-0 bg-black z-10">
             <span className="text-[#00FF66] font-bold">{">"} EDIT_TASK</span>
-            <div className="flex gap-2">
-              <button
-                onClick={handleSave}
-                className="text-[#00FF66] hover:bg-[#00FF66] hover:text-black px-3 py-1 border border-[#00FF66] transition-colors text-xs"
-              >
-                [ SAVE ]
-              </button>
-              <button
-                onClick={onClose}
-                className="text-[#FF3333] hover:bg-[#FF3333] hover:text-black px-2 py-1 border border-[#FF3333] transition-colors text-xs"
-              >
-                [ CLOSE ]
-              </button>
-            </div>
+<div className="flex gap-2">
+  <button
+    onClick={handleSave}
+    className="text-[#00FF66] hover:bg-[#00FF66] hover:text-black px-3 py-1 border border-[#00FF66] transition-colors text-xs"
+  >
+    [ SAVE ]
+  </button>
+  <button
+    onClick={onClose}
+    className="text-[#FF3333] hover:bg-[#FF3333] hover:text-black px-2 py-1 border border-[#FF3333] transition-colors text-xs"
+  >
+    [ CLOSE ]
+  </button>
+  <button
+    onClick={() => { onComplete?.(); onClose(); }}
+    disabled={!!task.is_completed}
+    className="text-[#00FF66] hover:bg-[#00FF66] hover:text-black px-2 py-1 border border-[#00FF66] transition-colors text-xs disabled:opacity-30"
+  >
+    {task.is_completed ? "[ CONCLUIDO ]" : "[ CONCLUIR TAREFA ]"}
+  </button>
+  <button
+    onClick={() => { onArchive?.(); onClose(); }}
+    disabled={!!task.is_archived}
+    className="text-[#00FF66] hover:bg-[#00FF66] hover:text-black px-2 py-1 border border-[#00FF66] transition-colors text-xs disabled:opacity-30"
+  >
+    {task.is_archived ? "[ ARQUIVADO ]" : "[ ARQUIVAR TAREFA ]"}
+  </button>
+</div>
           </div>
 
           <div className="p-4 space-y-6">
@@ -846,12 +918,19 @@ function TaskEditModal({
 
             <div>
               <div className="text-[#00FF66] text-xs mb-2">{">"} DESCRIPTION:</div>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={4}
-                className="w-full px-3 py-2 bg-[#1A1A1A] border border-[#262626] text-white text-base focus:border-[#00FF66] focus:outline-none resize-none"
-              />
+<textarea
+  value={description}
+  onChange={(e) => setDescription(e.target.value)}
+  rows={4}
+  className="w-full px-3 py-2 bg-[#1A1A1A] border border-[#262626] text-white text-base focus:border-[#00FF66] focus:outline-none resize-none"
+/>
+<button
+  onClick={handleAIEnhance}
+  disabled={isProcessingAI}
+  className="mt-2 w-full h-10 border border-[#00FF66] text-[#00FF66] text-xs hover:bg-[#00FF66] hover:text-black transition-colors disabled:opacity-50"
+>
+  {isProcessingAI ? "[ ✨ PROCESSING_AI... ]" : "[ ✨ AI_ENHANCE ]"}
+</button>
             </div>
 
             <div>
@@ -877,6 +956,7 @@ function TaskEditModal({
               labels={labels}
               onAdd={(label) => setLabels([...labels, label])}
               onRemove={(id) => setLabels(labels.filter((l) => l.id !== id))}
+              allLabels={allLabels}
             />
 
             <div>
@@ -1004,7 +1084,7 @@ function TaskCard({
   return (
     <div
       onClick={onEdit}
-      className="border border-[#262626] bg-[#1A1A1A] p-3 cursor-pointer hover:border-[#00FF66]/50 transition-colors"
+      className={`border border-[#262626] p-3 cursor-pointer hover:border-[#00FF66]/50 transition-colors ${task.is_completed ? 'bg-[#00FF66] text-black font-bold' : 'bg-[#1A1A1A] text-white'}` }
     >
       {task.labels.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-2">
@@ -1014,11 +1094,11 @@ function TaskCard({
         </div>
       )}
 
-      <div className="text-white font-bold text-sm mb-2 break-words">
+      <div className={`text-${task.is_completed ? 'black' : 'white'} font-bold text-sm mb-2 break-words`}>
         {task.title}
       </div>
       {task.description && (
-        <div className="text-white/70 text-xs mb-3 break-words line-clamp-2">
+        <div className={`text-${task.is_completed ? 'black' : 'white'}/70 text-xs mb-3 break-words line-clamp-2`}>
           {task.description}
         </div>
       )}
@@ -1412,6 +1492,8 @@ function KanbanBoard({
   onAddComment,
   onMarkNotificationRead,
   onClearAllNotifications,
+  onCompleteTask,
+  onArchiveTask,
   refreshData,
 }: {
   currentUser: TeamMember
@@ -1431,9 +1513,13 @@ function KanbanBoard({
   onAddComment: (taskId: string, content: string, mentions: string[]) => void
   onMarkNotificationRead: (id: string) => void
   onClearAllNotifications: () => void
+  onCompleteTask: (taskId: string) => void
+  onArchiveTask: (taskId: string) => void
   refreshData: () => void
 }) {
-  const [showTeamModal, setShowTeamModal] = useState(false)
+  const [showTeamModal, setShowTeamModal] = useState(false);
+const [viewMode, setViewMode] = useState<"kanban" | "list">("kanban");
+const [showArchived, setShowArchived] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false)
   const [showProfileEdit, setShowProfileEdit] = useState(false)
   const [showNewColumnForm, setShowNewColumnForm] = useState(false)
@@ -1459,6 +1545,17 @@ function KanbanBoard({
     if (newPosition < 0 || newPosition >= column.tasks.length) return
     onMoveTask(taskId, columnId, columnId, newPosition)
   }
+
+  const allLabels = columns.flatMap((col) => col.tasks.flatMap((t) => t.labels)).filter(
+    (label, index, self) => self.findIndex((l) => l.name === label.name) === index
+  )
+
+  const visibleColumns = columns.map((col) => ({
+    ...col,
+    tasks: col.tasks.filter((t) => !t.is_archived),
+  }))
+
+  const activeTasksCount = visibleColumns.reduce((acc, col) => acc + col.tasks.length, 0)
 
   return (
     <div className="min-h-screen bg-black flex flex-col">
@@ -1514,6 +1611,9 @@ function KanbanBoard({
           onAddComment={(content, mentions) => {
             onAddComment(editingTask.task.id, content, mentions)
           }}
+          onComplete={() => onCompleteTask(editingTask.task.id)}
+          onArchive={() => onArchiveTask(editingTask.task.id)}
+          allLabels={allLabels}
         />
       )}
 
@@ -1524,45 +1624,101 @@ function KanbanBoard({
           </div>
           <div className="text-[#00FF66]/50 text-xs whitespace-nowrap">
             COLUMNS: {columns.length} | TASKS:{" "}
-            {columns.reduce((acc, col) => acc + col.tasks.length, 0)}
+            {activeTasksCount}
           </div>
+          <button
+            onClick={() => setViewMode(viewMode === "kanban" ? "list" : "kanban")}
+            className={`h-8 px-3 border text-xs transition-colors whitespace-nowrap ${
+              viewMode === "list"
+                ? "border-[#00FF66] bg-[#00FF66] text-black"
+                : "border-[#262626] text-[#00FF66]/50 hover:border-[#00FF66] hover:text-[#00FF66]"
+            }`}
+          >
+            [ {viewMode === "kanban" ? "MODO_LISTA" : "MODO_KANBAN"} ]
+          </button>
         </div>
 
-        <div className="flex gap-4 overflow-x-auto pb-4 h-[calc(100vh-200px)] md:h-[calc(100vh-180px)]">
-          {columns.map((column, index) => (
-            <KanbanColumn
-              key={column.id}
-              column={column}
-              columnIndex={index}
-              totalColumns={columns.length}
-              team={team}
-              onAddTask={(task) => onAddTask(column.id, task)}
-              onMoveTask={(taskId, direction) => handleMoveTask(column.id, taskId, direction)}
-              onMoveTaskVertical={(taskId, direction) => handleMoveTaskVertical(column.id, taskId, direction)}
-              onDeleteTask={(taskId) => onDeleteTask(taskId)}
-              onDeleteColumn={() => onDeleteColumn(column.id)}
-              onEditTask={(task) => setEditingTask({ task, columnId: column.id })}
-              isDefault={DEFAULT_COLUMN_NAMES.includes(column.name)}
-            />
-          ))}
+        {viewMode === "kanban" ? (
+          <div className="flex gap-4 overflow-x-auto pb-4 h-[calc(100vh-200px)] md:h-[calc(100vh-180px)]">
+            {visibleColumns.map((column, index) => (
+              <KanbanColumn
+                key={column.id}
+                column={column}
+                columnIndex={index}
+                totalColumns={visibleColumns.length}
+                team={team}
+                onAddTask={(task) => onAddTask(column.id, task)}
+                onMoveTask={(taskId, direction) => handleMoveTask(column.id, taskId, direction)}
+                onMoveTaskVertical={(taskId, direction) => handleMoveTaskVertical(column.id, taskId, direction)}
+                onDeleteTask={(taskId) => onDeleteTask(taskId)}
+                onDeleteColumn={() => onDeleteColumn(column.id)}
+                onEditTask={(task) => setEditingTask({ task, columnId: column.id })}
+                isDefault={DEFAULT_COLUMN_NAMES.includes(column.name)}
+              />
+            ))}
 
-          {showNewColumnForm ? (
-            <NewColumnForm
-              onSubmit={(name) => {
-                onAddColumn(name)
-                setShowNewColumnForm(false)
-              }}
-              onCancel={() => setShowNewColumnForm(false)}
-            />
-          ) : (
-            <button
-              onClick={() => setShowNewColumnForm(true)}
-              className="flex-shrink-0 w-72 md:w-80 h-16 border border-dashed border-[#262626] text-[#00FF66]/50 text-xs hover:border-[#00FF66] hover:text-[#00FF66] transition-colors flex items-center justify-center"
-            >
-              [ + NEW COLUMN ]
-            </button>
-          )}
-        </div>
+            {showNewColumnForm ? (
+              <NewColumnForm
+                onSubmit={(name) => {
+                  onAddColumn(name)
+                  setShowNewColumnForm(false)
+                }}
+                onCancel={() => setShowNewColumnForm(false)}
+              />
+            ) : (
+              <button
+                onClick={() => setShowNewColumnForm(true)}
+                className="flex-shrink-0 w-72 md:w-80 h-16 border border-dashed border-[#262626] text-[#00FF66]/50 text-xs hover:border-[#00FF66] hover:text-[#00FF66] transition-colors flex items-center justify-center"
+              >
+                [ + NEW COLUMN ]
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="overflow-x-auto pb-4 h-[calc(100vh-200px)] md:h-[calc(100vh-180px)]">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="border-b border-[#262626]">
+                  <th className="text-left text-[#00FF66] text-xs p-2 font-bold">TAREFA</th>
+                  <th className="text-left text-[#00FF66] text-xs p-2 font-bold">COLUNA</th>
+                  <th className="text-left text-[#00FF66] text-xs p-2 font-bold">RESPONSAVEIS</th>
+                  <th className="text-left text-[#00FF66] text-xs p-2 font-bold">STATUS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleColumns.flatMap((col) =>
+                  col.tasks.map((task) => (
+                    <tr
+                      key={task.id}
+                      onClick={() => setEditingTask({ task, columnId: col.id })}
+                      className={`border-b border-[#1A1A1A] cursor-pointer hover:bg-[#1A1A1A] transition-colors ${
+                        task.is_completed ? "bg-[#00FF66]/10" : ""
+                      }`}
+                    >
+                      <td className="p-2 text-white text-sm">{task.title}</td>
+                      <td className="p-2 text-[#00FF66] text-xs">{col.name}</td>
+                      <td className="p-2 text-[#00FF66]/50 text-xs">
+                        {task.assignees.map((a) => `@${a}`).join(", ")}
+                      </td>
+                      <td className="p-2 text-xs">
+                        {task.is_completed ? (
+                          <span className="text-[#00FF66]">CONCLUIDO</span>
+                        ) : (
+                          <span className="text-yellow-500">PENDENTE</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+            {activeTasksCount === 0 && (
+              <div className="text-center text-[#00FF66]/30 text-sm py-8">
+                {">"} NENHUMA_TAREFA_ENCONTRADA
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <footer className="border-t border-[#262626] p-3 text-center">
@@ -1856,6 +2012,48 @@ export default function BroLabTask() {
     }
   }
 
+  // Complete task
+  const handleCompleteTask = async (taskId: string) => {
+    try {
+      await fetch("/api/tasks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: taskId, is_completed: true }),
+      })
+      setColumns((prev) =>
+        prev.map((col) => ({
+          ...col,
+          tasks: col.tasks.map((t) =>
+            t.id === taskId ? { ...t, is_completed: true } : t
+          ),
+        }))
+      )
+    } catch (error) {
+      console.error("Error completing task:", error)
+    }
+  }
+
+  // Archive task
+  const handleArchiveTask = async (taskId: string) => {
+    try {
+      await fetch("/api/tasks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: taskId, is_archived: true }),
+      })
+      setColumns((prev) =>
+        prev.map((col) => ({
+          ...col,
+          tasks: col.tasks.map((t) =>
+            t.id === taskId ? { ...t, is_archived: true } : t
+          ),
+        }))
+      )
+    } catch (error) {
+      console.error("Error archiving task:", error)
+    }
+  }
+
   if (isLoading) {
     return <LoadingScreen message={loadingMessage} />
   }
@@ -1883,6 +2081,8 @@ export default function BroLabTask() {
       onAddComment={handleAddComment}
       onMarkNotificationRead={handleMarkNotificationRead}
       onClearAllNotifications={handleClearAllNotifications}
+      onCompleteTask={handleCompleteTask}
+      onArchiveTask={handleArchiveTask}
       refreshData={fetchData}
     />
   )
