@@ -1966,7 +1966,7 @@ function KanbanBoard({
           <div className="border-2 border-[#FF3333] bg-black max-w-lg w-full p-6">
             <div className="text-[#FF3333] font-bold text-sm mb-4">{">"} SUBTAREFAS_PENDENTES</div>
             <div className="text-white/70 text-xs mb-6">
-              Esta tarefa possui subtarefas que ainda não foram concluídas (APROVADO/FEITO). Deseja movê-la para FEITO mesmo assim?
+              Esta tarefa possui subtarefas que ainda não foram concluidas (APROVADO/FEITO). Deseja movê-la para FEITO mesmo assim?
             </div>
             <div className="flex gap-3">
               <button onClick={() => {
