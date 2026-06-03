@@ -5,7 +5,7 @@ import { verifyAccessToken } from "@/lib/auth/jwt"
 const PUBLIC_ROUTES = ["/api/auth/login", "/api/auth/refresh", "/api/auth/me", "/api/auth/logout"]
 const MUTATION_METHODS = ["POST", "PATCH", "PUT", "DELETE"]
 
-export function proxy(request: NextRequest) {
+export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   if (!pathname.startsWith("/api/")) {

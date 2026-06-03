@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { NextRequest, NextResponse } from "next/server"
-import bcrypt from "bcryptjs"
-import { signAccessToken, signRefreshToken } from "@/lib/auth/jwt"
+
+const BCRYPT_PREFIX = "$2a$"
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,7 +10,9 @@ export async function POST(request: NextRequest) {
 
     if (!supabase) {
       return NextResponse.json(
-        { error: "ERRO: SUPABASE_SERVICE_ROLE_KEY_NAO_CONFIGURADA" },
+        {
+          error: "ERRO: SUPABASE_SERVICE_ROLE_KEY_NAO_CONFIGURADA",
+        },
         { status: 500 },
       )
     }
@@ -48,9 +50,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
+<<<<<<< HEAD
+    if (user.password !== password) {
+=======
     let passwordValid = false
 
-    if (user.password.startsWith("$2a$") || user.password.startsWith("$2b$")) {
+    if (user.password.startsWith(BCRYPT_PREFIX)) {
       passwordValid = await bcrypt.compare(password, user.password)
     } else if (user.password === password) {
       passwordValid = true
@@ -59,45 +64,24 @@ export async function POST(request: NextRequest) {
     }
 
     if (!passwordValid) {
+>>>>>>> parent of 6786381 (renomear função de middleware para proxy e ajustar lógica de autenticação)
       return NextResponse.json(
         { error: "ERRO: CREDENCIAIS_INVÁLIDAS" },
         { status: 401 },
       )
     }
 
-    const jwtPayload = { userId: user.id, username: user.username, role: user.role }
-    const accessToken = signAccessToken(jwtPayload)
-    const refreshToken = signRefreshToken(jwtPayload)
-
-    const userData = {
-      id: user.id,
-      name: user.name,
-      username: user.username,
-      email: user.email,
-      role: user.role,
-      role_id: user.role_id,
-      isAdmin: user.role === "ADMIN_TOTAL" || user.role === "ADMIN",
-    }
-
-    const response = NextResponse.json({ user: userData, accessToken })
-
-    response.cookies.set("refresh_token", refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/api/auth",
-      maxAge: 60 * 60 * 24 * 7,
+    return NextResponse.json({
+      user: {
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        role_id: user.role_id,
+        isAdmin: user.role === "ADMIN_TOTAL" || user.role === "ADMIN",
+      },
     })
-
-    response.cookies.set("access_token", accessToken, {
-      httpOnly: false,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 15,
-    })
-
-    return response
   } catch {
     return NextResponse.json(
       { error: "ERRO: FALHA_NO_SERVIDOR" },

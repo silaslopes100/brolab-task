@@ -16,16 +16,13 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData()
     const file = formData.get("file") as File | null
     const taskId = formData.get("taskId") as string | null
-    const subtaskId = formData.get("subtaskId") as string | null
 
-    if (!file || (!taskId && !subtaskId)) {
+    if (!file || !taskId) {
       return NextResponse.json(
-        { error: "ERRO: ARQUIVO_E_TASK_ID_OU_SUBTASK_ID_OBRIGATORIOS" },
+        { error: "ERRO: ARQUIVO_E_TASK_ID_OBRIGATORIOS" },
         { status: 400 },
       )
     }
-
-    const targetId = taskId || subtaskId
 
     const { data: bucket, error: bucketError } = await supabase.storage.getBucket(BUCKET_NAME)
     if (bucketError || !bucket) {
@@ -36,7 +33,7 @@ export async function POST(request: NextRequest) {
     }
 
     const fileExt = file.name.split(".").pop()
-    const fileName = `${targetId}/${crypto.randomUUID()}.${fileExt}`
+    const fileName = `${taskId}/${crypto.randomUUID()}.${fileExt}`
     const arrayBuffer = await file.arrayBuffer()
     const buffer = new Uint8Array(arrayBuffer)
 
@@ -55,18 +52,15 @@ export async function POST(request: NextRequest) {
 
     const publicUrl = urlData?.publicUrl || ""
 
-    const insertData: Record<string, unknown> = {
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      path: fileName,
-    }
-    if (taskId) insertData.task_id = taskId
-    if (subtaskId) insertData.subtask_id = subtaskId
-
     const { data: fileRecord, error: dbError } = await supabase
       .from("task_files")
-      .insert(insertData)
+      .insert({
+        task_id: taskId,
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        path: fileName,
+      })
       .select()
       .single()
 

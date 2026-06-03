@@ -1,7 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 import { NextRequest, NextResponse } from "next/server"
-import bcrypt from "bcryptjs"
 
 export async function GET() {
   try {
@@ -46,15 +45,13 @@ export async function POST(request: NextRequest) {
 
     const finalUsername = username.startsWith("@") ? username : `@${username}`
 
-    const hashedPassword = await bcrypt.hash(password, 10)
-
     const { data: user, error } = await supabase
       .from("team_members")
       .insert({
         name: name.toUpperCase().replace(/\s+/g, "_"),
         username: finalUsername.toLowerCase(),
         email: email.toLowerCase(),
-        password: hashedPassword,
+        password,
         role: role?.toUpperCase().replace(/\s+/g, "_") || "COLLABORATOR",
       })
       .select()
@@ -126,7 +123,7 @@ export async function PATCH(request: NextRequest) {
     const updates: Record<string, string> = {}
     if (name) updates.name = name.toUpperCase().replace(/\s+/g, "_")
     if (email) updates.email = email.toLowerCase()
-    if (password) updates.password = await bcrypt.hash(password, 10)
+    if (password) updates.password = password
     if (role) updates.role = role.toUpperCase().replace(/\s+/g, "_")
 
     const { data: user, error } = await supabase

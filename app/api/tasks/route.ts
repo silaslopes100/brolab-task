@@ -63,30 +63,7 @@ export async function GET() {
       }
     }
 
-    const { data: allSubtasks, error: subtasksError } = await supabase
-      .from("subtasks")
-      .select("id, task_id, estimated_hours, time_spent, timer_started_at, status")
-
-    const subtaskAggByTaskId: Record<string, { count: number; totalEstimated: number; totalTimeSpent: number }> = {}
-    if (!subtasksError && allSubtasks) {
-      for (const st of allSubtasks) {
-        if (!subtaskAggByTaskId[st.task_id]) {
-          subtaskAggByTaskId[st.task_id] = { count: 0, totalEstimated: 0, totalTimeSpent: 0 }
-        }
-        const agg = subtaskAggByTaskId[st.task_id]
-        agg.count++
-        agg.totalEstimated += st.estimated_hours || 0
-        const now = Date.now()
-        const startedAt = st.timer_started_at ? new Date(st.timer_started_at).getTime() : null
-        const liveTime = startedAt
-          ? (st.time_spent || 0) + (now - startedAt) / 1000
-          : (st.time_spent || 0)
-        agg.totalTimeSpent += Math.round(liveTime)
-      }
-    }
-
     const formattedTasks = (tasks || []).map((task) => {
-      const subtaskAgg = subtaskAggByTaskId[task.id] || { count: 0, totalEstimated: 0, totalTimeSpent: 0 }
       const files = (filesByTaskId[task.id] || []).map((f) => {
         const { data: urlData } = supabase.storage
           .from(BUCKET_NAME)
@@ -108,13 +85,11 @@ export async function GET() {
         position: task.position,
         createdAt: task.created_at,
         assignees: task.assignees || [],
-        labels: (task.labels || []).map((raw: string) => {
-          const [name, color] = raw.split('||')
-          return { id: name, name, color: color || getLabelColor(name) }
-        }),
-        subtaskCount: subtaskAgg.count,
-        totalEstimatedHours: subtaskAgg.totalEstimated,
-        totalTimeSpent: subtaskAgg.totalTimeSpent,
+        labels: (task.labels || []).map((name: string) => ({
+          id: name,
+          name,
+          color: getLabelColor(name),
+        })),
         comments: (commentsByTaskId[task.id] || []).map((c) => ({
           id: c.id,
           content: c.content,
@@ -124,6 +99,8 @@ export async function GET() {
           mentions: [],
         })),
         files,
+        is_completed: task.is_completed ?? false,
+        is_archived: task.is_archived ?? false,
       }
     })
 
@@ -159,30 +136,13 @@ export async function POST(request: NextRequest) {
         position: position || 0,
         assignees: assignees || [],
         labels: labels
-          ? labels.map((l: { name: string; color?: string }) => `${l.name}||${l.color || getLabelColor(l.name)}`)
+          ? labels.map((l: { name: string }) => l.name)
           : [],
       })
       .select()
       .single()
 
     if (taskError) throw taskError
-
-    // Notify all users about the new task
-    const { data: allUsers, error: usersError } = await supabase
-      .from('team_members')
-      .select('id')
-    if (!usersError && allUsers && allUsers.length > 0) {
-      const notifInserts = allUsers.map((u) => ({
-        user_id: u.id,
-        type: 'task_created',
-        message: `Nova tarefa criada: ${task.title}`,
-        task_id: task.id,
-        task_title: task.title,
-        from_user: '',
-        read: false,
-      }))
-      await supabase.from('notifications').insert(notifInserts)
-    }
 
     return NextResponse.json({
       task: {
@@ -193,15 +153,15 @@ export async function POST(request: NextRequest) {
         position: task.position,
         createdAt: task.created_at,
         assignees: task.assignees || [],
-        labels: (task.labels || []).map((raw: string) => {
-          const [name, color] = raw.split('||')
-          return { id: name, name, color: color || getLabelColor(name) }
-        }),
-        subtaskCount: 0,
-        totalEstimatedHours: 0,
-        totalTimeSpent: 0,
+        labels: (task.labels || []).map((name: string) => ({
+          id: name,
+          name,
+          color: getLabelColor(name),
+        })),
         comments: [],
         files: [],
+        is_completed: task.is_completed ?? false,
+        is_archived: task.is_archived ?? false,
       },
     })
   } catch (err) {
@@ -215,8 +175,8 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const { id, title, description, columnId, position, assignees, labels } =
-      await request.json()
+    const body = await request.json()
+    const { id, title, description, columnId, position, assignees, labels, is_completed, is_archived } = body
     const supabase = createAdminClient()
 
     if (!supabase) {
@@ -233,7 +193,9 @@ export async function PATCH(request: NextRequest) {
     if (position !== undefined) updates.position = position
     if (assignees !== undefined) updates.assignees = assignees
     if (labels !== undefined)
-      updates.labels = labels.map((l: { name: string; color?: string }) => `${l.name}||${l.color || getLabelColor(l.name)}`)
+      updates.labels = labels.map((l: { name: string }) => l.name)
+    if (is_completed !== undefined) updates.is_completed = is_completed
+    if (is_archived !== undefined) updates.is_archived = is_archived
 
     if (Object.keys(updates).length > 0) {
       const { error: taskError } = await supabase
@@ -242,35 +204,6 @@ export async function PATCH(request: NextRequest) {
         .eq("id", id)
 
       if (taskError) throw taskError
-    }
-
-    // Notify all users about task update
-    // Determine task title for notification message
-    let taskTitle = ''
-    if (title) {
-      taskTitle = title as string
-    } else {
-      const { data: taskData, error: taskFetchError } = await supabase
-        .from('tasks')
-        .select('title')
-        .eq('id', id)
-        .single()
-      taskTitle = taskData?.title || ''
-    }
-    const { data: allUsers, error: usersError } = await supabase
-      .from('team_members')
-      .select('id')
-    if (!usersError && allUsers && allUsers.length > 0) {
-      const notifInserts = allUsers.map((u) => ({
-        user_id: u.id,
-        type: 'task_updated',
-        message: `Tarefa atualizada: ${taskTitle}`,
-        task_id: id,
-        task_title: taskTitle,
-        from_user: '',
-        read: false,
-      }))
-      await supabase.from('notifications').insert(notifInserts)
     }
 
     return NextResponse.json({ success: true })
@@ -300,34 +233,9 @@ export async function DELETE(request: NextRequest) {
         { status: 500 },
       )
     }
-    // Fetch task title before deletion for notification
-    const { data: taskData, error: fetchError } = await supabase
-      .from('tasks')
-      .select('title')
-      .eq('id', id)
-      .single()
-    const taskTitle = taskData?.title || ''
-
     const { error } = await supabase.from("tasks").delete().eq("id", id)
 
     if (error) throw error
-
-    // Notify all users about task deletion
-    const { data: allUsers, error: usersError } = await supabase
-      .from('team_members')
-      .select('id')
-    if (!usersError && allUsers && allUsers.length > 0) {
-      const notifInserts = allUsers.map((u) => ({
-        user_id: u.id,
-        type: 'task_deleted',
-        message: `Tarefa excluída: ${taskTitle}`,
-        task_id: id,
-        task_title: taskTitle,
-        from_user: '',
-        read: false,
-      }))
-      await supabase.from('notifications').insert(notifInserts)
-    }
 
     return NextResponse.json({ success: true })
   } catch {
