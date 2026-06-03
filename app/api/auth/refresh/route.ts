@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { verifyRefreshToken, signAccessToken, signRefreshToken } from "@/lib/auth/jwt"
+import { verifyRefreshToken, signAccessToken, signRefreshToken, getAccessTokenExpiry, getRefreshTokenExpiry } from "@/lib/auth/jwt"
 
 export async function POST(request: NextRequest) {
   const refreshToken = request.cookies.get("refresh_token")?.value
@@ -18,20 +18,22 @@ export async function POST(request: NextRequest) {
 
   const response = NextResponse.json({ accessToken: newAccessToken })
 
+  const isProd = process.env.NODE_ENV === "production"
+
   response.cookies.set("refresh_token", newRefreshToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: isProd,
     sameSite: "lax",
-    path: "/api/auth",
-    maxAge: 60 * 60 * 24 * 7,
+    path: "/",
+    maxAge: getRefreshTokenExpiry(),
   })
 
   response.cookies.set("access_token", newAccessToken, {
     httpOnly: false,
-    secure: process.env.NODE_ENV === "production",
+    secure: isProd,
     sameSite: "lax",
     path: "/",
-    maxAge: 60 * 15,
+    maxAge: getAccessTokenExpiry(),
   })
 
   return response

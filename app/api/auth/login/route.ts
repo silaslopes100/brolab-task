@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { NextRequest, NextResponse } from "next/server"
 import bcrypt from "bcryptjs"
-import { signAccessToken, signRefreshToken } from "@/lib/auth/jwt"
+import { signAccessToken, signRefreshToken, getAccessTokenExpiry, getRefreshTokenExpiry } from "@/lib/auth/jwt"
 import { LoginSchema, validate } from "@/lib/validation"
 import { checkRateLimit } from "@/lib/rate-limit"
 
@@ -97,20 +97,22 @@ export async function POST(request: NextRequest) {
 
     const response = NextResponse.json({ user: userData, accessToken })
 
+    const isProd = process.env.NODE_ENV === "production"
+
     response.cookies.set("refresh_token", refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: isProd,
       sameSite: "lax",
-      path: "/api/auth",
-      maxAge: 60 * 60 * 24 * 7,
+      path: "/",
+      maxAge: getRefreshTokenExpiry(),
     })
 
     response.cookies.set("access_token", accessToken, {
       httpOnly: false,
-      secure: process.env.NODE_ENV === "production",
+      secure: isProd,
       sameSite: "lax",
       path: "/",
-      maxAge: 60 * 15,
+      maxAge: getAccessTokenExpiry(),
     })
 
     return response

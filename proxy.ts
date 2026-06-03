@@ -19,18 +19,12 @@ export function proxy(request: NextRequest) {
   const token = request.cookies.get("access_token")?.value || request.headers.get("authorization")?.replace("Bearer ", "")
 
   if (!token) {
-    if (MUTATION_METHODS.includes(request.method)) {
-      return NextResponse.json({ error: "ERRO: AUTENTICACAO_REQUERIDA" }, { status: 401 })
-    }
-    return NextResponse.next()
+    return NextResponse.json({ error: "ERRO: AUTENTICACAO_REQUERIDA" }, { status: 401 })
   }
 
   const payload = verifyAccessToken(token)
   if (!payload) {
-    if (MUTATION_METHODS.includes(request.method)) {
-      return NextResponse.json({ error: "ERRO: TOKEN_INVALIDO" }, { status: 401 })
-    }
-    return NextResponse.next()
+    return NextResponse.json({ error: "ERRO: TOKEN_INVALIDO" }, { status: 401 })
   }
 
   const requestHeaders = new Headers(request.headers)

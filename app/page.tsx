@@ -4,8 +4,9 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { showToast, ToastContainer } from "@/components/toast-notification"
 import {
-  DndContext, DragOverlay, closestCorners, KeyboardSensor,
-  PointerSensor, useSensor, useSensors, type DragStartEvent, type DragEndEvent, type DragOverEvent,
+  DndContext, DragOverlay, closestCorners, closestCenter, KeyboardSensor,
+  PointerSensor, TouchSensor, useSensor, useSensors, useDroppable,
+  type DragStartEvent, type DragEndEvent, type DragOverEvent,
 } from "@dnd-kit/core"
 import {
   SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable,
@@ -60,6 +61,8 @@ interface Task {
   description: string
   columnPosition: number
   position: number
+  isComplete: boolean
+  isClosed: boolean
   assignees: string[]
   labels: Label[]
   comments: Comment[]
@@ -99,13 +102,18 @@ interface Notification {
 
 // ==================== LABEL COLORS ====================
 const LABEL_COLORS = [
-  { name: "Branca", value: "#FFFFFF" },
-  { name: "Cinza", value: "#6B7280" },
-  { name: "Verde Limão", value: "#84CC16" },
-  { name: "Verde Pistache", value: "#A3E635" },
-  { name: "Laranja Forte", value: "#F97316" },
-  { name: "Vermelho", value: "#EF4444" },
-  { name: "Verde Folha", value: "#22C55E" },
+  { name: "Vermelho", value: "#ff4444" },
+  { name: "Laranja", value: "#ff8844" },
+  { name: "Amarelo", value: "#ffcc00" },
+  { name: "Verde", value: "#00ff88" },
+  { name: "Verde escuro", value: "#00aa55" },
+  { name: "Ciano", value: "#00ccff" },
+  { name: "Azul", value: "#4488ff" },
+  { name: "Roxo", value: "#aa44ff" },
+  { name: "Rosa", value: "#ff44aa" },
+  { name: "Cinza", value: "#888888" },
+  { name: "Branco", value: "#f0f0f0" },
+  { name: "Preto", value: "#2a2a2a" },
 ]
 
 // ==================== DEFAULT COLUMN IDS ====================
@@ -245,12 +253,30 @@ function NotificationsModal({
   onClose,
   onMarkRead,
   onClearAll,
+  team,
 }: {
   notifications: Notification[]
   onClose: () => void
   onMarkRead: (id: string) => void
   onClearAll: () => void
+  team?: TeamMember[]
 }) {
+  const [filterUser, setFilterUser] = useState<string>(() => {
+    if (typeof window !== "undefined") return localStorage.getItem("bro:notif:filter") || "all"
+    return "all"
+  })
+
+  const handleFilterChange = (val: string) => {
+    setFilterUser(val)
+    if (typeof window !== "undefined") localStorage.setItem("bro:notif:filter", val)
+  }
+
+  const filtered = notifications.filter((n) => {
+    if (filterUser === "all") return true
+    if (filterUser === "mine") return n.fromUser === ""
+    return n.fromUser === filterUser
+  })
+
   return (
     <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4">
       <div className="border-2 border-[#00FF66] bg-black w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
@@ -272,14 +298,30 @@ function NotificationsModal({
           </div>
         </div>
 
+        <div className="border-b border-[#262626] px-4 py-2 flex items-center gap-2">
+          <span className="text-[#00FF66]/50 text-xs">FILTRO:</span>
+          <select
+            value={filterUser}
+            onChange={(e) => handleFilterChange(e.target.value)}
+            className="flex-1 h-8 bg-[#1A1A1A] border border-[#262626] text-[#00FF66] text-xs focus:border-[#00FF66] focus:outline-none"
+          >
+            <option value="all">Todos</option>
+            <option value="mine">Apenas minhas</option>
+            {team?.map((m) => (
+              <option key={m.id} value={m.username}>{m.username}</option>
+            ))}
+          </select>
+          <span className="text-[#888] text-xs">{filtered.length}</span>
+        </div>
+
         <div className="flex-1 overflow-y-auto p-4">
-          {notifications.length === 0 ? (
+          {filtered.length === 0 ? (
             <div className="text-[#00FF66]/50 text-sm text-center py-8">
               {">"} NO_NOTIFICATIONS
             </div>
           ) : (
             <div className="space-y-3">
-              {notifications.map((notif) => (
+              {filtered.map((notif) => (
                 <div
                   key={notif.id}
                   onClick={() => onMarkRead(notif.id)}
@@ -298,6 +340,7 @@ function NotificationsModal({
                         {notif.message}
                       </div>
                       <div className="text-[#00FF66]/50 text-xs mt-1">
+                        {notif.fromUser && <span>@{notif.fromUser} | </span>}
                         {notif.taskTitle} | {new Date(notif.createdAt).toLocaleString("pt-BR")}
                       </div>
                     </div>
@@ -612,16 +655,23 @@ function LabelManager({
   labels,
   onAdd,
   onRemove,
+  taskId,
+  workspaceLabels,
+  onToggleWorkspaceLabel,
 }: {
   labels: Label[]
   onAdd: (label: Label) => void
   onRemove: (id: string) => void
+  taskId?: string
+  workspaceLabels?: Label[]
+  onToggleWorkspaceLabel?: (labelId: string) => void
 }) {
   const [showForm, setShowForm] = useState(false)
   const [newName, setNewName] = useState("")
   const [selectedColor, setSelectedColor] = useState(LABEL_COLORS[0].value)
+  const [search, setSearch] = useState("")
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (newName.trim()) {
       onAdd({
         id: Date.now().toString(),
@@ -633,6 +683,10 @@ function LabelManager({
       setShowForm(false)
     }
   }
+
+  const filteredWorkspace = (workspaceLabels || []).filter(l =>
+    l.name.toLowerCase().includes(search.toLowerCase())
+  )
 
   return (
     <div className="border border-[#262626] p-3">
@@ -651,6 +705,37 @@ function LabelManager({
         ))}
       </div>
 
+      {workspaceLabels && workspaceLabels.length > 0 && (
+        <div className="mb-3">
+          <input
+            type="text"
+            placeholder="Buscar etiqueta..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full h-8 px-2 bg-[#1A1A1A] border border-[#262626] text-white text-xs placeholder:text-[#00FF66]/30 focus:border-[#00FF66] focus:outline-none mb-2"
+          />
+          <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto">
+            {filteredWorkspace.map((wl) => {
+              const isActive = labels.some(l => l.id === wl.id)
+              return (
+                <button
+                  key={wl.id}
+                  onClick={() => onToggleWorkspaceLabel?.(wl.id)}
+                  className={`flex items-center gap-1 px-2 py-1 text-xs border rounded transition-colors ${
+                    isActive
+                      ? "border-[#00FF66] bg-[#00FF66]/10 text-[#00FF66]"
+                      : "border-[#262626] text-[#888] hover:border-[#3a3a3a]"
+                  }`}
+                >
+                  <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: wl.color }} />
+                  {wl.name}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {!showForm ? (
         <button
           onClick={() => setShowForm(true)}
@@ -667,21 +752,22 @@ function LabelManager({
             onChange={(e) => setNewName(e.target.value)}
             className="w-full h-10 px-3 bg-[#1A1A1A] border border-[#262626] text-white text-sm placeholder:text-[#00FF66]/30 focus:border-[#00FF66] focus:outline-none"
           />
-          <div className="flex flex-wrap gap-2">
-            {LABEL_COLORS.map((color) => (
+          <div className="grid grid-cols-6 gap-2">
+            {LABEL_COLORS.map((c) => (
               <button
-                key={color.value}
-                onClick={() => setSelectedColor(color.value)}
-                className={`w-8 h-8 border-2 transition-colors ${
-                  selectedColor === color.value
-                    ? "border-[#00FF66]"
+                key={c.value}
+                onClick={() => setSelectedColor(c.value)}
+                className={`w-full aspect-square border-2 transition-colors rounded ${
+                  selectedColor === c.value
+                    ? "border-[#00FF66] scale-110"
                     : "border-transparent"
                 }`}
-                style={{ backgroundColor: color.value }}
-                title={color.name}
+                style={{ backgroundColor: c.value }}
+                title={c.name}
               />
             ))}
           </div>
+          <div className="text-[#00FF66]/50 text-[10px]">{selectedColor}</div>
           <div className="flex gap-2">
             <button
               onClick={handleAdd}
@@ -983,11 +1069,19 @@ function TaskEditModal({
   const [showNewSubtask, setShowNewSubtask] = useState(false)
   const [newSubtaskTitle, setNewSubtaskTitle] = useState("")
   const [newSubtaskEstHours, setNewSubtaskEstHours] = useState("")
+  const [improving, setImproving] = useState(false)
+  const [workspaceLabels, setWorkspaceLabels] = useState<Label[]>([])
+  const [confirmArchive, setConfirmArchive] = useState(false)
+  const [archiving, setArchiving] = useState(false)
 
   useEffect(() => {
     fetch(`/api/subtasks?taskId=${task.id}`)
       .then((r) => r.json())
       .then((d) => setSubtasks(d.subtasks || []))
+      .catch(() => {})
+    fetch("/api/workspace-labels")
+      .then((r) => r.json())
+      .then((d) => setWorkspaceLabels(d.labels || []))
       .catch(() => {})
   }, [task.id])
 
@@ -1089,6 +1183,24 @@ function TaskEditModal({
     }
   }
 
+  const improveDescription = async () => {
+    if (!description.trim() || improving) return
+    setImproving(true)
+    try {
+      const res = await fetch("/api/ai/improve-description", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description, cardTitle: task.title }),
+      })
+      const { data } = await res.json()
+      if (data?.improved) setDescription(data.improved)
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setImproving(false)
+    }
+  }
+
   const formatTime = (seconds: number) => {
     const h = Math.floor(seconds / 3600)
     const m = Math.floor((seconds % 3600) / 60)
@@ -1129,7 +1241,20 @@ function TaskEditModal({
             </div>
 
             <div>
-              <div className="text-[#00FF66] text-xs mb-2">{">"} DESCRIPTION:</div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-[#00FF66] text-xs">{">"} DESCRIPTION:</div>
+                <button
+                  onClick={improveDescription}
+                  disabled={improving || !description.trim()}
+                  className="flex items-center gap-1 px-2 py-1 text-[10px] border border-[#2a2a2a] rounded hover:border-[#00ff88] hover:text-[#00ff88] text-[#888] transition-all disabled:opacity-40"
+                >
+                  {improving ? (
+                    <span className="animate-pulse">✦ melhorando...</span>
+                  ) : (
+                    <>✦ melhorar com IA</>
+                  )}
+                </button>
+              </div>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
@@ -1161,6 +1286,23 @@ function TaskEditModal({
               labels={labels}
               onAdd={(label) => setLabels([...labels, label])}
               onRemove={(id) => setLabels(labels.filter((l) => l.id !== id))}
+              taskId={task.id}
+              workspaceLabels={workspaceLabels}
+              onToggleWorkspaceLabel={async (labelId) => {
+                await fetch("/api/workspace-labels/toggle", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ cardId: task.id, labelId }),
+                })
+                const label = workspaceLabels.find(l => l.id === labelId)
+                if (!label) return
+                const exists = labels.some(l => l.id === labelId)
+                if (exists) {
+                  setLabels(labels.filter(l => l.id !== labelId))
+                } else {
+                  setLabels([...labels, label])
+                }
+              }}
             />
 
             <div>
@@ -1310,8 +1452,39 @@ function TaskEditModal({
                 onSubmit={handleAddComment} team={team} placeholder="Digite seu comentário..." />
             </div>
 
-            <div className="text-[#00FF66]/50 text-xs">
-              {">"} CREATED: {new Date(task.createdAt).toLocaleString("pt-BR")} | ID: {task.id.slice(0, 8)}...
+            <div className="flex items-center justify-between">
+              <div className="text-[#00FF66]/50 text-xs">
+                {">"} CREATED: {new Date(task.createdAt).toLocaleString("pt-BR")} | ID: {task.id.slice(0, 8)}...
+              </div>
+              {!confirmArchive ? (
+                <button
+                  onClick={() => setConfirmArchive(true)}
+                  className="flex items-center gap-1 px-2 py-1 text-[10px] border border-[#2a2a2a] rounded text-[#888] hover:border-[#ffcc00] hover:text-[#ffcc00] transition-all"
+                >
+                  🗄 arquivar
+                </button>
+              ) : (
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-[#ffcc00]">Confirmar?</span>
+                  <button
+                    onClick={async () => {
+                      setArchiving(true)
+                      await fetch(`/api/cards/${task.id}/archive`, { method: "POST" })
+                      onClose()
+                    }}
+                    disabled={archiving}
+                    className="px-2 py-1 bg-[#ffcc00] text-[#0a0a0a] text-[10px] rounded font-bold hover:bg-[#e6b800] transition-colors"
+                  >
+                    sim
+                  </button>
+                  <button
+                    onClick={() => setConfirmArchive(false)}
+                    className="px-2 py-1 border border-[#2a2a2a] text-[#888] text-[10px] rounded hover:border-[#00FF66] transition-colors"
+                  >
+                    não
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1332,6 +1505,7 @@ function SortableTaskCard({
   onDelete,
   onEdit,
   onCancel,
+  onToggleComplete,
 }: {
   task: Task
   columnIndex: number
@@ -1343,6 +1517,7 @@ function SortableTaskCard({
   onDelete: () => void
   onEdit: () => void
   onCancel?: () => void
+  onToggleComplete?: () => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id })
   const style = {
@@ -1356,25 +1531,40 @@ function SortableTaskCard({
       ref={setNodeRef}
       style={style}
       onClick={onEdit}
-      className="border border-[#262626] bg-[#1A1A1A] p-3 cursor-pointer hover:border-[#00FF66]/50 transition-colors"
+      className={`border p-3 cursor-pointer transition-colors relative ${
+        task.isComplete
+          ? "bg-[#00ff88] border-[#00cc6a]"
+          : "border-[#262626] bg-[#1A1A1A] hover:border-[#00FF66]/50"
+      }`}
     >
-      <div {...attributes} {...listeners} className="text-[#00FF66]/30 text-xs mb-1 cursor-grab active:cursor-grabbing select-none">
+      <button
+        onClick={(e) => { e.stopPropagation(); onToggleComplete?.() }}
+        className={`absolute top-2 right-2 w-5 h-5 flex items-center justify-center rounded-sm z-10 transition-colors ${
+          task.isComplete
+            ? "text-[#0a0a0a]"
+            : "text-[#888] hover:text-[#00ff88]"
+        }`}
+        title={task.isComplete ? "Marcar como pendente" : "Marcar como concluída"}
+      >
+        {task.isComplete ? "✓" : "○"}
+      </button>
+      <div {...attributes} {...listeners} className={`text-xs mb-1 cursor-grab active:cursor-grabbing select-none ${task.isComplete ? "text-[#0a2a1a]" : "text-[#00FF66]/30"}`}>
         ⠿ {task.title ? "DRAG" : ""}
       </div>
       {task.labels.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-2">
+        <div className={`flex flex-wrap gap-1 mb-2 ${task.isComplete ? "opacity-70" : ""}`}>
           {task.labels.map((label) => (
             <LabelBadge key={label.id} label={label} />
           ))}
         </div>
       )}
 
-      <div className="text-white font-bold text-sm mb-2 break-words">{task.title}</div>
+      <div className={`font-bold text-sm mb-2 break-words ${task.isComplete ? "text-[#0a0a0a] line-through" : "text-white"}`}>{task.title}</div>
       {task.description && (
-        <div className="text-white/70 text-xs mb-3 break-words line-clamp-2">{task.description}</div>
+        <div className={`text-xs mb-3 break-words line-clamp-2 ${task.isComplete ? "text-[#0a0a0a]" : "text-white/70"}`}>{task.description}</div>
       )}
 
-      <div className="text-[#00FF66] text-xs mb-3 flex flex-wrap gap-1">
+      <div className={`text-xs mb-3 flex flex-wrap gap-1 ${task.isComplete ? "text-[#0a2a1a]" : "text-[#00FF66]"}`}>
         {task.assignees.map((assignee, i) => {
           const display = assignee.startsWith("@") ? assignee : `@${assignee.toLowerCase().replace(/\s+/g, "_")}`
           return <span key={i}>{display}{i < task.assignees.length - 1 ? "," : ""}</span>
@@ -1382,13 +1572,13 @@ function SortableTaskCard({
       </div>
 
       {task.comments.length > 0 && (
-        <div className="text-[#00FF66]/50 text-xs mb-3">[ {task.comments.length} COMMENT{task.comments.length > 1 ? "S" : ""} ]</div>
+        <div className={`text-xs mb-3 ${task.isComplete ? "text-[#0a2a1a]/70" : "text-[#00FF66]/50"}`}>[ {task.comments.length} COMMENT{task.comments.length > 1 ? "S" : ""} ]</div>
       )}
       {task.files && task.files.length > 0 && (
-        <div className="text-[#00FF66]/50 text-xs mb-3">[ {task.files.length} FILE{task.files.length > 1 ? "S" : ""} ]</div>
+        <div className={`text-xs mb-3 ${task.isComplete ? "text-[#0a2a1a]/70" : "text-[#00FF66]/50"}`}>[ {task.files.length} FILE{task.files.length > 1 ? "S" : ""} ]</div>
       )}
       {task.subtaskCount !== undefined && task.subtaskCount > 0 && (
-        <div className="text-[#00FF66]/50 text-xs mb-3">
+        <div className={`text-xs mb-3 ${task.isComplete ? "text-[#0a2a1a]/70" : "text-[#00FF66]/50"}`}>
           [ {task.subtaskCount} SUBTASK{(task.subtaskCount || 0) > 1 ? "S" : ""} ]
           {(task.totalEstimatedHours || 0) > 0 && <> | EST: {task.totalEstimatedHours}h</>}
           {(task.totalTimeSpent || 0) > 0 && (
@@ -1513,13 +1703,136 @@ function NewTaskForm({
   )
 }
 
+// ==================== NEW TASK MODAL (global, backlog-forced) ====================
+function NewTaskModal({
+  team,
+  backlogColumn,
+  onClose,
+  onSubmit,
+}: {
+  team: TeamMember[]
+  backlogColumn: Column | null
+  onClose: () => void
+  onSubmit: (task: { title: string; description: string; assignees: string[] }) => void
+}) {
+  const [title, setTitle] = useState("")
+  const [description, setDescription] = useState("")
+  const [assignees, setAssignees] = useState<string[]>([team[0]?.name || ""])
+  const [submitting, setSubmitting] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    setTimeout(() => inputRef.current?.focus(), 50)
+  }, [])
+
+  const toggleAssignee = (name: string) => {
+    if (assignees.includes(name)) {
+      if (assignees.length > 1) setAssignees(assignees.filter((a) => a !== name))
+    } else {
+      setAssignees([...assignees, name])
+    }
+  }
+
+  const handleSubmit = async () => {
+    if (!title.trim() || submitting) return
+    setSubmitting(true)
+    await onSubmit({
+      title: title.trim(),
+      description: description.trim(),
+      assignees,
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="border-2 border-[#00FF66] bg-black max-w-md w-full p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <span className="text-[#00FF66] font-bold text-sm">{">"} NOVA_TAREFA</span>
+          {backlogColumn && (
+            <span className="text-[10px] text-[#00FF66]/60 border border-[#00FF66]/30 px-2 py-0.5">
+              Status inicial: {backlogColumn.name}
+            </span>
+          )}
+        </div>
+
+        <div className="space-y-3">
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder="TÍTULO *"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleSubmit() }}
+            className="w-full h-12 px-3 bg-[#1A1A1A] border border-[#262626] text-white text-base placeholder:text-[#00FF66]/30 focus:border-[#00FF66] focus:outline-none"
+          />
+          <textarea
+            placeholder="DESCRIÇÃO (opcional)"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={3}
+            className="w-full px-3 py-2 bg-[#1A1A1A] border border-[#262626] text-white text-base placeholder:text-[#00FF66]/30 focus:border-[#00FF66] focus:outline-none resize-none"
+          />
+          <div>
+            <div className="text-[#00FF66] text-xs mb-2">{">"} SELECT_ASSIGNEES:</div>
+            <div className="flex flex-wrap gap-2">
+              {team.map((member) => (
+                <button
+                  key={member.id}
+                  onClick={() => toggleAssignee(member.name)}
+                  className={`px-2 py-1 border text-xs transition-colors ${
+                    assignees.includes(member.name)
+                      ? "border-[#00FF66] bg-[#00FF66] text-black"
+                      : "border-[#262626] text-white hover:border-[#00FF66]"
+                  }`}
+                >
+                  @{member.username}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleSubmit}
+              disabled={!title.trim() || submitting}
+              className="flex-1 h-12 border border-[#00FF66] text-[#00FF66] text-xs hover:bg-[#00FF66] hover:text-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {submitting ? "CRIANDO..." : "[ CRIAR ]"}
+            </button>
+            <button
+              onClick={onClose}
+              className="h-12 px-4 border border-[#262626] text-[#00FF66]/50 text-xs hover:border-[#00FF66] transition-colors"
+            >
+              [ CANCELAR ]
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ==================== EMPTY LIST DROP ZONE ====================
+function EmptyListDropZone({ columnId }: { columnId: string }) {
+  const { isOver, setNodeRef } = useDroppable({ id: `empty-${columnId}`, data: { type: "list", listId: columnId } })
+  return (
+    <div
+      ref={setNodeRef}
+      className={`min-h-[60px] border-2 border-dashed rounded transition-all ${
+        isOver ? "border-[#00ff88] bg-[rgba(0,255,136,0.06)]" : "border-[#2a2a2a]"
+      }`}
+    />
+  )
+}
+
 // ==================== KANBAN COLUMN ====================
 function KanbanColumn({
   column,
   columnIndex,
   totalColumns,
   team,
-  onAddTask,
   onMoveTask,
   onMoveTaskVertical,
   onDeleteTask,
@@ -1530,12 +1843,12 @@ function KanbanColumn({
   onMoveColumn,
   columnPosition,
   allColumnsCount,
+  onToggleComplete,
 }: {
   column: Column
   columnIndex: number
   totalColumns: number
   team: TeamMember[]
-  onAddTask: (task: { title: string; description: string; assignees: string[] }) => void
   onMoveTask: (taskId: string, direction: "left" | "right") => void
   onMoveTaskVertical: (taskId: string, direction: "up" | "down") => void
   onDeleteTask: (taskId: string) => void
@@ -1546,15 +1859,65 @@ function KanbanColumn({
   onMoveColumn?: (direction: "left" | "right") => void
   columnPosition?: number
   allColumnsCount?: number
+  onToggleComplete?: (taskId: string) => void
 }) {
-  const [showNewTaskForm, setShowNewTaskForm] = useState(false)
   const taskIds = column.tasks.map((t) => t.id)
+  const [editingName, setEditingName] = useState(false)
+  const [nameDraft, setNameDraft] = useState(column.name)
+  const [nameSaving, setNameSaving] = useState(false)
+  const [nameError, setNameError] = useState("")
+  const nameInputRef = useRef<HTMLInputElement>(null)
+
+  const saveColumnName = async () => {
+    const trimmed = nameDraft.trim()
+    if (!trimmed) { setNameError("Nome não pode ser vazio"); return }
+    if (trimmed.length > 50) { setNameError("Máximo 50 caracteres"); return }
+    if (trimmed === column.name) { setEditingName(false); return }
+    setNameSaving(true)
+    try {
+      const res = await fetch(`/api/columns/${encodeURIComponent(column.name)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: trimmed }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setNameError(data.error || "Erro ao renomear"); return }
+      column.name = trimmed
+      setEditingName(false)
+      setNameError("")
+    } catch { setNameError("Erro de conexão") }
+    finally { setNameSaving(false) }
+  }
 
   return (
     <div className="flex-shrink-0 w-72 md:w-80 border border-[#262626] bg-black flex flex-col max-h-full">
       <div className="border-b border-[#262626] p-3 flex items-center justify-between bg-[#1A1A1A]">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-[#00FF66] font-bold text-sm truncate">{column.name}</span>
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          {editingName ? (
+            <div className="relative flex-1">
+              <input
+                ref={nameInputRef}
+                value={nameDraft}
+                onChange={(e) => { setNameDraft(e.target.value); setNameError("") }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") saveColumnName()
+                  if (e.key === "Escape") { setEditingName(false); setNameDraft(column.name); setNameError("") }
+                }}
+                onBlur={saveColumnName}
+                maxLength={55}
+                autoFocus
+                className="w-full bg-[#0a0a0a] border rounded px-1.5 py-0.5 text-xs text-[#f0f0f0] focus:outline-none"
+              />
+              {nameSaving && <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[10px] text-[#00ff88] animate-pulse">✓</span>}
+              {nameError && <div className="absolute top-full left-0 mt-1 text-[10px] text-[#ff4444] bg-[#1a0000] border border-[#5a0000] rounded px-2 py-1 z-50 whitespace-nowrap">{nameError}</div>}
+            </div>
+          ) : (
+            <span
+              onClick={() => { setNameDraft(column.name); setEditingName(true); setTimeout(() => nameInputRef.current?.select(), 50) }}
+              className="text-[#00FF66] font-bold text-sm truncate cursor-pointer hover:text-[#00ff88] transition-colors"
+              title="Clique para renomear"
+            >{column.name}</span>
+          )}
           <span className="text-[#00FF66]/50 text-xs shrink-0">[{column.tasks.length}]</span>
         </div>
         <div className="flex items-center gap-1 shrink-0">
@@ -1593,27 +1956,13 @@ function KanbanColumn({
               onDelete={() => onDeleteTask(task.id)}
               onEdit={() => onEditTask(task)}
               onCancel={onCancelTask ? () => onCancelTask(task) : undefined}
+              onToggleComplete={() => onToggleComplete?.(task.id)}
             />
           ))}
+          {column.tasks.length === 0 && (
+            <EmptyListDropZone columnId={column.id} />
+          )}
         </SortableContext>
-
-        {showNewTaskForm ? (
-          <NewTaskForm
-            team={team}
-            onSubmit={(task) => {
-              onAddTask(task)
-              setShowNewTaskForm(false)
-            }}
-            onCancel={() => setShowNewTaskForm(false)}
-          />
-        ) : (
-          <button
-            onClick={() => setShowNewTaskForm(true)}
-            className="w-full h-12 border border-dashed border-[#262626] text-[#00FF66]/50 text-xs hover:border-[#00FF66] hover:text-[#00FF66] transition-colors"
-          >
-            [ + NEW TASK ]
-          </button>
-        )}
       </div>
     </div>
   )
@@ -1677,18 +2026,26 @@ function Header({
   onEditProfile: () => void
   showTeam: boolean
 }) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
   return (
     <header className="border-b-2 border-[#00FF66] bg-black sticky top-0 z-40">
       <div className="px-3 py-3 md:px-6 md:py-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-[#00FF66]">
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="md:hidden w-8 h-8 bg-[#1A1A1A] border border-[#262626] flex items-center justify-center mr-2"
+            >
+              <span className="text-[#888] text-xs">{mobileMenuOpen ? "✕" : "☰"}</span>
+            </button>
             <span className="text-lg md:text-xl font-bold">BRO.LABS</span>
-            <span className="text-[#00FF66]/50 text-xs md:text-sm">
+            <span className="text-[#00FF66]/50 text-xs hidden sm:inline">
               {"// BROLABTASK_CLI_v2.0"}
             </span>
           </div>
 
-          <div className="flex items-center gap-2 md:gap-3 flex-wrap">
+          <div className="hidden md:flex items-center gap-3">
             <div className="border border-[#262626] px-3 py-2 text-xs">
               <span className="text-[#00FF66]/50">USER:</span>
               <span className="text-white ml-2">@{currentUser.username}</span>
@@ -1727,7 +2084,36 @@ function Header({
               [ EXIT_SESSION ]
             </button>
           </div>
+
+          <div className="flex md:hidden items-center gap-2">
+            <NotificationBell
+              notifications={notifications}
+              onOpen={onToggleNotifications}
+            />
+          </div>
         </div>
+
+        {mobileMenuOpen && (
+          <div className="md:hidden mt-3 pt-3 border-t border-[#262626] space-y-2">
+            <div className="border border-[#262626] px-3 py-2 text-xs">
+              <span className="text-[#00FF66]/50">USER:</span>
+              <span className="text-white ml-2">@{currentUser.username}</span>
+              {currentUser.isAdmin && (
+                <span className="text-[#FF3333] ml-2">[ADMIN]</span>
+              )}
+            </div>
+            <button onClick={onEditProfile}
+              className="w-full h-10 border border-[#262626] text-[#00FF66] text-xs hover:border-[#00FF66] transition-colors">[ EDIT_PROFILE ]</button>
+            <button onClick={onToggleTeam}
+              className={`w-full h-10 border text-xs transition-colors ${
+                showTeam
+                  ? "border-[#00FF66] bg-[#00FF66] text-black"
+                  : "border-[#00FF66] bg-black text-[#00FF66] hover:bg-[#262626]"
+              }`}>[ VIEW_TEAM ]</button>
+            <button onClick={onLogout}
+              className="w-full h-10 border border-[#FF3333] text-[#FF3333] text-xs hover:bg-[#FF3333] hover:text-black transition-colors">[ EXIT_SESSION ]</button>
+          </div>
+        )}
       </div>
     </header>
   )
@@ -1753,6 +2139,203 @@ function LoadingScreen({ message }: { message: string }) {
   )
 }
 
+// ==================== ARCHIVED CARDS ====================
+function ArchivedCards({
+  onClose,
+  onRestore,
+}: {
+  onClose: () => void
+  onRestore: (cardId: string) => void
+}) {
+  const [cards, setCards] = useState<Array<{ id: string; title: string; columnName: string; updatedAt: string; labels: Label[] }>>([])
+  const [search, setSearch] = useState("")
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetch(`/api/cards/archived`)
+      .then((r) => r.json())
+      .then((d) => setCards(d.cards || []))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  const filtered = cards.filter((c) => c.title.toLowerCase().includes(search.toLowerCase()))
+
+  return (
+    <div className="fixed right-0 top-0 h-full w-80 bg-[#111] border-l border-[#2a2a2a] shadow-2xl z-40 flex flex-col">
+      <div className="flex items-center justify-between p-3 border-b border-[#2a2a2a]">
+        <span className="text-[#00FF66] text-xs font-bold">ARQUIVADOS</span>
+        <button onClick={onClose} className="text-[#888] hover:text-[#00FF66] text-xs">✕</button>
+      </div>
+      <div className="p-3 border-b border-[#2a2a2a]">
+        <input
+          type="text"
+          placeholder="Buscar..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full h-8 px-2 bg-[#1A1A1A] border border-[#262626] text-white text-xs placeholder:text-[#00FF66]/30 focus:border-[#00FF66] focus:outline-none"
+        />
+      </div>
+      <div className="flex-1 overflow-y-auto p-3 space-y-2">
+        {loading ? (
+          <div className="text-[#888] text-xs text-center py-8">CARREGANDO...</div>
+        ) : filtered.length === 0 ? (
+          <div className="text-[#888] text-xs text-center py-8">NENHUM CARD ARQUIVADO</div>
+        ) : (
+          filtered.map((card) => (
+            <div key={card.id} className="bg-[#1a1a1a] border border-[#2a2a2a] rounded p-2.5">
+              <div className="text-xs text-[#f0f0f0] line-through opacity-60 font-medium">{card.title}</div>
+              <div className="text-[10px] text-[#888] mt-1">{card.columnName}</div>
+              {card.labels.length > 0 && (
+                <div className="flex gap-1 mt-1">
+                  {card.labels.map((l) => (
+                    <span key={l.id} className="w-4 h-1.5 rounded-sm" style={{ backgroundColor: l.color }} />
+                  ))}
+                </div>
+              )}
+              <div className="text-[10px] text-[#555] mt-1">
+                {new Date(card.updatedAt).toLocaleDateString("pt-BR")}
+              </div>
+              <div className="flex gap-1 mt-2">
+                <button
+                  onClick={() => onRestore(card.id)}
+                  className="flex-1 py-1 bg-[#00ff88] text-[#0a0a0a] text-[10px] rounded font-bold hover:bg-[#00cc6a] transition-colors"
+                >
+                  RESTAURAR
+                </button>
+                <button
+                  onClick={async () => {
+                    await fetch(`/api/tasks?id=${card.id}`, { method: "DELETE" })
+                    setCards(cards.filter((c) => c.id !== card.id))
+                  }}
+                  className="px-2 py-1 border border-[#ff4444] text-[#ff4444] text-[10px] rounded hover:bg-[#ff4444] hover:text-white transition-colors"
+                >
+                  EXCLUIR
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ==================== LIST VIEW ====================
+function ListView({
+  columns,
+  onEditTask,
+  onToggleComplete,
+}: {
+  columns: Column[]
+  onEditTask: (task: Task, columnId: string) => void
+  onToggleComplete?: (taskId: string) => void
+}) {
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  const [showCompleted, setShowCompleted] = useState(false)
+
+  const toggleCollapse = (colId: string) => {
+    setCollapsed(prev => ({ ...prev, [colId]: !prev[colId] }))
+  }
+
+  return (
+    <div className="overflow-y-auto h-full pb-4">
+      {columns.map((col) => {
+        const filtered = showCompleted ? col.tasks : col.tasks.filter(t => !t.isComplete)
+        const isCollapsed = collapsed[col.id]
+        return (
+          <div key={col.id} className="mb-4 border border-[#262626] rounded">
+            <div
+              onClick={() => toggleCollapse(col.id)}
+              className="flex items-center gap-2 px-3 py-2 bg-[#1a1a1a] border-b border-[#2a2a2a] cursor-pointer hover:bg-[#222] transition-colors"
+            >
+              <span className="text-[#00FF66] text-xs font-bold">{isCollapsed ? "▶" : "▼"}</span>
+              <span className="text-[#f0f0f0] text-xs font-bold">{col.name}</span>
+              <span className="bg-[#2a2a2a] text-[#888] text-[10px] px-2 py-0.5 rounded-sm">{col.tasks.length}</span>
+              {!showCompleted && col.tasks.filter(t => t.isComplete).length > 0 && (
+                <span className="text-[#00ff88] text-[10px] ml-auto">+{col.tasks.filter(t => t.isComplete).length} concluída(s)</span>
+              )}
+            </div>
+            {!isCollapsed && (
+              <div className="overflow-x-auto">
+                {filtered.length === 0 ? (
+                  <div className="text-[#888] text-xs p-4 text-center">Nenhuma tarefa</div>
+                ) : (
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-[#1a1a1a] text-[#888] text-[10px]">
+                        <th className="w-8 p-2"></th>
+                        <th className="text-left p-2">Título</th>
+                        <th className="text-left p-2 hidden sm:table-cell">Etiquetas</th>
+                        <th className="text-left p-2 hidden md:table-cell">Responsáveis</th>
+                        <th className="text-left p-2 hidden lg:table-cell">Criado em</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map((task) => (
+                        <tr
+                          key={task.id}
+                          onClick={() => onEditTask(task, col.id)}
+                          className={`border-b border-[#1a1a1a] hover:bg-[#1a1a1a] transition-all cursor-pointer ${
+                            task.isComplete ? "bg-[#00ff88]/5" : "bg-[#111]"
+                          }`}
+                        >
+                          <td className="p-2" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); onToggleComplete?.(task.id) }}
+                              className={`w-5 h-5 flex items-center justify-center rounded-sm transition-colors ${
+                                task.isComplete ? "text-[#00ff88]" : "text-[#888] hover:text-[#00ff88]"
+                              }`}
+                            >
+                              {task.isComplete ? "✓" : "○"}
+                            </button>
+                          </td>
+                          <td className={`p-2 font-medium ${task.isComplete ? "text-[#00ff88] line-through" : "text-[#f0f0f0]"}`}>
+                            {task.title}
+                          </td>
+                          <td className="p-2 hidden sm:table-cell">
+                            <div className="flex gap-1 flex-wrap">
+                              {task.labels.slice(0, 3).map((l) => (
+                                <span key={l.id} className="w-5 h-1.5 rounded-sm inline-block" style={{ backgroundColor: l.color }} />
+                              ))}
+                              {task.labels.length > 3 && (
+                                <span className="text-[#888] text-[10px]">+{task.labels.length - 3}</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="p-2 hidden md:table-cell">
+                            <div className="flex gap-1">
+                              {task.assignees.map((a, i) => (
+                                <span key={i} className="w-5 h-5 bg-[#00ff88] rounded-sm flex items-center justify-center text-[#0a0a0a] text-[8px] font-bold">
+                                  {a.charAt(0)}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="p-2 text-[#888] hidden lg:table-cell">
+                            {new Date(task.createdAt).toLocaleDateString("pt-BR")}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
+          </div>
+        )
+      })}
+      {columns.length > 0 && (
+        <label className="flex items-center gap-2 px-3 py-2 cursor-pointer">
+          <input type="checkbox" checked={showCompleted} onChange={() => setShowCompleted(!showCompleted)}
+            className="accent-[#00ff88]" />
+          <span className="text-[#888] text-xs">Mostrar concluídas</span>
+        </label>
+      )}
+    </div>
+  )
+}
+
 // ==================== MAIN BOARD ====================
 function KanbanBoard({
   currentUser,
@@ -1774,6 +2357,7 @@ function KanbanBoard({
   onClearAllNotifications,
   refreshData,
   onReorderColumns,
+  onToggleComplete,
 }: {
   currentUser: TeamMember
   team: TeamMember[]
@@ -1795,6 +2379,7 @@ function KanbanBoard({
   onClearAllNotifications: () => void
   refreshData: () => void
   onReorderColumns?: (columns: Column[]) => void
+  onToggleComplete?: (taskId: string) => void
 }) {
   const [showTeamModal, setShowTeamModal] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
@@ -1807,9 +2392,20 @@ function KanbanBoard({
   const [activeTask, setActiveTask] = useState<{ task: Task; columnId: string } | null>(null)
   const [filterAssignee, setFilterAssignee] = useState<string[]>([])
   const [filterLabel, setFilterLabel] = useState<string[]>([])
-  const [pendingCloseTask, setPendingCloseTask] = useState<{ taskId: string; fromColumnId: string; toColumnId: string; newPosition?: number } | null>(null)
+  const [filterSearch, setFilterSearch] = useState("")
+  const [filterStatus, setFilterStatus] = useState<"all" | "active" | "complete">("all")
+  const [pendingCloseTask, setPendingCloseTask] = useState<{
+  taskId: string
+  fromColumnId: string
+  toColumnId: string
+  newPosition?: number
+  isToggle?: boolean
+} | null>(null)
   const [cancelModalTask, setCancelModalTask] = useState<Task | null>(null)
   const [cancelReason, setCancelReason] = useState("")
+  const [viewMode, setViewMode] = useState<"kanban" | "list">("kanban")
+  const [showArchived, setShowArchived] = useState(false)
+  const [showNewTaskModal, setShowNewTaskModal] = useState(false)
 
   const allLabels: Label[] = columns.flatMap((c) => c.tasks.flatMap((t) => t.labels))
     .filter((l, i, arr) => arr.findIndex((x) => x.id === l.id) === i)
@@ -1817,8 +2413,11 @@ function KanbanBoard({
   const filteredColumns = columns.map((col) => ({
     ...col,
     tasks: col.tasks.filter((t) => {
+      if (filterSearch && !t.title.toLowerCase().includes(filterSearch.toLowerCase())) return false
       if (filterAssignee.length > 0 && !t.assignees.some((a) => filterAssignee.includes(a))) return false
       if (filterLabel.length > 0 && !t.labels.some((l) => filterLabel.includes(l.id))) return false
+      if (filterStatus === "active" && t.isComplete) return false
+      if (filterStatus === "complete" && !t.isComplete) return false
       return true
     }),
   }))
@@ -1828,6 +2427,7 @@ function KanbanBoard({
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
@@ -1936,6 +2536,7 @@ function KanbanBoard({
           onClose={() => setShowNotifications(false)}
           onMarkRead={onMarkNotificationRead}
           onClearAll={onClearAllNotifications}
+          team={team}
         />
       )}
 
@@ -1984,13 +2585,22 @@ function KanbanBoard({
           <div className="border-2 border-[#FF3333] bg-black max-w-lg w-full p-6">
             <div className="text-[#FF3333] font-bold text-sm mb-4">{">"} SUBTAREFAS_PENDENTES</div>
             <div className="text-white/70 text-xs mb-6">
-              Esta tarefa possui subtarefas que ainda não foram concluídas (APROVADO/FEITO). Deseja movê-la para FEITO mesmo assim?
+              {pendingCloseTask.isToggle
+                ? "Esta tarefa possui subtarefas que ainda não foram concluídas. Deseja marcá-la como concluída mesmo assim?"
+                : "Esta tarefa possui subtarefas que ainda não foram concluídas (APROVADO/FEITO). Deseja movê-la para FEITO mesmo assim?"}
             </div>
             <div className="flex gap-3">
-              <button onClick={() => {
-                if (pendingCloseTask) onMoveTask(pendingCloseTask.taskId, pendingCloseTask.fromColumnId, pendingCloseTask.toColumnId, pendingCloseTask.newPosition)
+              <button onClick={async () => {
+                const pt = pendingCloseTask
                 setPendingCloseTask(null)
-              }} className="flex-1 h-10 border border-[#FF3333] text-[#FF3333] text-xs hover:bg-[#FF3333] hover:text-black transition-colors">[ FORCAR_MOVER ]</button>
+                if (pt.isToggle) {
+                  await doToggleComplete(pt.taskId, true)
+                } else {
+                  onMoveTask(pt.taskId, pt.fromColumnId, pt.toColumnId, pt.newPosition)
+                }
+              }} className="flex-1 h-10 border border-[#FF3333] text-[#FF3333] text-xs hover:bg-[#FF3333] hover:text-black transition-colors">
+                {pendingCloseTask.isToggle ? "[ MARCAR_CONCLUIDA ]" : "[ FORCAR_MOVER ]"}
+              </button>
               <button onClick={() => setPendingCloseTask(null)} className="flex-1 h-10 border border-[#00FF66] text-[#00FF66] text-xs hover:bg-[#00FF66] hover:text-black transition-colors">[ CANCELAR ]</button>
             </div>
           </div>
@@ -2019,94 +2629,201 @@ function KanbanBoard({
         </div>
       )}
 
+      {showNewTaskModal && (
+        <NewTaskModal
+          team={team}
+          backlogColumn={columns.length > 0 ? columns.reduce((a, b) => a.position < b.position ? a : b) : null}
+          onClose={() => setShowNewTaskModal(false)}
+          onSubmit={async (task) => {
+            const backlog = columns.reduce((a, b) => a.position < b.position ? a : b)
+            if (backlog) {
+              onAddTask(backlog.id, task)
+            }
+            setShowNewTaskModal(false)
+          }}
+        />
+      )}
+
       <div className="flex-1 p-3 md:p-6 overflow-hidden">
         <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-2 flex-wrap">
           <div className="text-[#00FF66] text-sm whitespace-nowrap">{">"} BOARD_STATUS: SUPABASE_CONNECTED</div>
           <div className="text-[#00FF66]/50 text-xs whitespace-nowrap">COLUMNS: {columns.length} | TASKS: {columns.reduce((acc, col) => acc + col.tasks.length, 0)}</div>
-          <div className="flex-1" />
-          <select
-            multiple
-            value={filterAssignee}
-            onChange={(e) => setFilterAssignee(Array.from(e.target.selectedOptions, (o) => o.value))}
-            className="h-8 max-w-[140px] bg-[#1A1A1A] border border-[#262626] text-[#00FF66] text-[10px] focus:border-[#00FF66] focus:outline-none"
+          <button
+            onClick={() => setShowNewTaskModal(true)}
+            className="h-8 px-3 border border-[#00ff88] bg-[#00ff88] text-black text-[10px] font-bold hover:bg-[#00e67a] transition-colors flex items-center gap-1 shadow-[0_0_8px_rgba(0,255,136,0.25)]"
           >
-            {team.map((m) => (
-              <option key={m.id} value={m.name}>{m.username}</option>
-            ))}
-          </select>
-          <select
-            multiple
-            value={filterLabel}
-            onChange={(e) => setFilterLabel(Array.from(e.target.selectedOptions, (o) => o.value))}
-            className="h-8 max-w-[140px] bg-[#1A1A1A] border border-[#262626] text-[#00FF66] text-[10px] focus:border-[#00FF66] focus:outline-none"
-          >
-            {allLabels.map((l) => (
-              <option key={l.id} value={l.id}>{l.name}</option>
-            ))}
-          </select>
-          {(filterAssignee.length > 0 || filterLabel.length > 0) && (
+            + NOVA TAREFA
+          </button>
+          <div className="flex gap-1">
             <button
-              onClick={() => { setFilterAssignee([]); setFilterLabel([]) }}
-              className="h-8 px-2 border border-[#FF3333]/50 text-[#FF3333] text-[10px] hover:border-[#FF3333] transition-colors"
-            >CLEAR</button>
-          )}
-        </div>
-
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCorners}
-          onDragStart={handleDragStart}
-          onDragOver={handleDragOver}
-          onDragEnd={handleDragEnd}
-        >
-          <div className="flex gap-4 overflow-x-auto pb-4 h-[calc(100vh-200px)] md:h-[calc(100vh-180px)]">
-            {filteredColumns.map((column, index) => (
-              <KanbanColumn
-                key={column.id}
-                column={column}
-                columnIndex={index}
-                totalColumns={filteredColumns.length}
-                team={team}
-                onAddTask={(task) => onAddTask(column.id, task)}
-                onMoveTask={(taskId, direction) => handleMoveTask(column.id, taskId, direction)}
-                onMoveTaskVertical={(taskId, direction) => handleMoveTaskVertical(column.id, taskId, direction)}
-                onDeleteTask={(taskId) => onDeleteTask(taskId)}
-                onDeleteColumn={() => onDeleteColumn(column.id)}
-                onEditTask={(task) => setEditingTask({ task, columnId: column.id })}
-                onCancelTask={(task) => setCancelModalTask(task)}
-                isDefault={DEFAULT_COLUMN_NAMES.includes(column.name)}
-                onMoveColumn={(dir) => handleColumnMove(column.id, dir)}
-                columnPosition={columns.findIndex((c) => c.id === column.id)}
-                allColumnsCount={columns.length}
-              />
-            ))}
-
-          {showNewColumnForm ? (
-            <NewColumnForm
-              onSubmit={(name) => {
-                onAddColumn(name)
-                setShowNewColumnForm(false)
-              }}
-              onCancel={() => setShowNewColumnForm(false)}
+              onClick={() => setViewMode("kanban")}
+              className={`w-8 h-8 flex items-center justify-center rounded text-xs transition-colors ${
+                viewMode === "kanban"
+                  ? "border border-[#00ff88] bg-[rgba(0,255,136,0.08)] text-[#00ff88]"
+                  : "border border-[#2a2a2a] text-[#888] hover:border-[#3a3a3a]"
+              }`}
+              title="Kanban"
+            >⊞</button>
+            <button
+              onClick={() => setViewMode("list")}
+              className={`w-8 h-8 flex items-center justify-center rounded text-xs transition-colors ${
+                viewMode === "list"
+                  ? "border border-[#00ff88] bg-[rgba(0,255,136,0.08)] text-[#00ff88]"
+                  : "border border-[#2a2a2a] text-[#888] hover:border-[#3a3a3a]"
+              }`}
+              title="Lista"
+            >☰</button>
+          </div>
+          <div className="relative">
+            <input
+              value={filterSearch}
+              onChange={(e) => setFilterSearch(e.target.value)}
+              placeholder="buscar..."
+              className="h-8 w-28 bg-[#1A1A1A] border border-[#262626] rounded px-2 text-[10px] text-[#f0f0f0] placeholder:text-[#555] focus:border-[#00FF66] focus:outline-none focus:w-36 transition-all"
             />
-          ) : (
+            {filterSearch && (
+              <button
+                onClick={() => setFilterSearch("")}
+                className="absolute right-1 top-1/2 -translate-y-1/2 text-[#888] hover:text-[#f0f0f0] text-[10px]"
+              >×</button>
+            )}
+          </div>
+
+          <select
+            value={filterAssignee[0] || ""}
+            onChange={(e) => {
+              const val = e.target.value
+              setFilterAssignee(val ? [val] : [])
+            }}
+            className="h-8 max-w-[110px] bg-[#1A1A1A] border border-[#262626] text-[#00FF66] text-[10px] focus:border-[#00FF66] focus:outline-none"
+          >
+            <option value="">Membro</option>
+            {team.map((m) => (
+              <option key={m.id} value={m.name}>
+                {filterAssignee.includes(m.name) ? "✓ " : ""}@{m.username}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={filterLabel[0] || ""}
+            onChange={(e) => {
+              const val = e.target.value
+              setFilterLabel(val ? [val] : [])
+            }}
+            className="h-8 max-w-[110px] bg-[#1A1A1A] border border-[#262626] text-[#00FF66] text-[10px] focus:border-[#00FF66] focus:outline-none"
+          >
+            <option value="">Label</option>
+            {allLabels.map((l) => (
+              <option key={l.id} value={l.id}>
+                {filterLabel.includes(l.id) ? "✓ " : ""}{l.name}
+              </option>
+            ))}
+          </select>
+
+          <div className="flex gap-0">
+            {(["all", "active", "complete"] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setFilterStatus(s)}
+                className={`h-8 px-2 text-[10px] transition-colors first:rounded-l last:rounded-r ${
+                  filterStatus === s
+                    ? "bg-[#00FF66] text-black font-bold border border-[#00FF66]"
+                    : "bg-[#1A1A1A] text-[#888] border border-[#262626] hover:border-[#3a3a3a]"
+                }`}
+              >
+                {s === "all" ? "Todas" : s === "active" ? "Ativas" : "Feitas"}
+              </button>
+            ))}
+          </div>
+
+          {(filterAssignee.length > 0 || filterLabel.length > 0 || filterSearch || filterStatus !== "all") && (
             <button
-              onClick={() => setShowNewColumnForm(true)}
-              className="flex-shrink-0 w-72 md:w-80 h-16 border border-dashed border-[#262626] text-[#00FF66]/50 text-xs hover:border-[#00FF66] hover:text-[#00FF66] transition-colors flex items-center justify-center"
-            >
-              [ + NEW COLUMN ]
-            </button>
+              onClick={() => { setFilterAssignee([]); setFilterLabel([]); setFilterSearch(""); setFilterStatus("all") }}
+              className="h-8 px-2 border border-[#FF3333]/50 text-[#FF3333] text-[10px] hover:border-[#FF3333] transition-colors"
+            >LIMPAR</button>
           )}
+          <button
+            onClick={() => setShowArchived(true)}
+            className="h-8 px-2 border border-[#2a2a2a] text-[#888] text-[10px] hover:border-[#3a3a3a] hover:text-[#f0f0f0] transition-colors flex items-center gap-1"
+          >
+            🗄 arquivados
+          </button>
         </div>
-        <DragOverlay>
-          {activeTask ? (
-            <div className="border border-[#00FF66] bg-[#1A1A1A] p-3 opacity-80 w-72 md:w-80">
-              <div className="text-white font-bold text-sm mb-2">{activeTask.task.title}</div>
-              <div className="text-[#00FF66] text-xs">[ DRAGGING ]</div>
-            </div>
-          ) : null}
-        </DragOverlay>
-      </DndContext>
+
+        {showArchived && (
+          <ArchivedCards
+            onClose={() => setShowArchived(false)}
+            onRestore={async (cardId) => {
+              await fetch(`/api/cards/${cardId}/restore`, { method: "POST" })
+              setShowArchived(false)
+              refreshData()
+            }}
+          />
+        )}
+        {viewMode === "kanban" ? (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCorners}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
+          >
+            <div className="flex gap-4 overflow-x-auto pb-4 h-[calc(100vh-200px)] md:h-[calc(100vh-180px)]">
+              {filteredColumns.map((column, index) => (
+                <KanbanColumn
+                  key={column.id}
+                  column={column}
+                  columnIndex={index}
+                  totalColumns={filteredColumns.length}
+                  team={team}
+                  onMoveTask={(taskId, direction) => handleMoveTask(column.id, taskId, direction)}
+                  onMoveTaskVertical={(taskId, direction) => handleMoveTaskVertical(column.id, taskId, direction)}
+                  onDeleteTask={(taskId) => onDeleteTask(taskId)}
+                  onDeleteColumn={() => onDeleteColumn(column.id)}
+                  onEditTask={(task) => setEditingTask({ task, columnId: column.id })}
+                  onCancelTask={(task) => setCancelModalTask(task)}
+                  isDefault={DEFAULT_COLUMN_NAMES.includes(column.name)}
+                  onMoveColumn={(dir) => handleColumnMove(column.id, dir)}
+                  columnPosition={columns.findIndex((c) => c.id === column.id)}
+                  allColumnsCount={columns.length}
+                  onToggleComplete={onToggleComplete}
+                />
+              ))}
+
+            {showNewColumnForm ? (
+              <NewColumnForm
+                onSubmit={(name) => {
+                  onAddColumn(name)
+                  setShowNewColumnForm(false)
+                }}
+                onCancel={() => setShowNewColumnForm(false)}
+              />
+            ) : (
+              <button
+                onClick={() => setShowNewColumnForm(true)}
+                className="flex-shrink-0 w-72 md:w-80 h-16 border border-dashed border-[#262626] text-[#00FF66]/50 text-xs hover:border-[#00FF66] hover:text-[#00FF66] transition-colors flex items-center justify-center"
+              >
+                [ + NEW COLUMN ]
+              </button>
+            )}
+          </div>
+          <DragOverlay dropAnimation={{ duration: 150, easing: "ease-out" }}>
+            {activeTask ? (
+              <div className="w-72 bg-[#1e1e1e] border-2 border-[#00ff88] rounded p-2.5 shadow-2xl opacity-95 rotate-1 scale-105 font-mono">
+                <p className="text-xs text-[#f0f0f0] font-bold">{activeTask.task.title}</p>
+                <p className="text-[#00FF66] text-[10px] mt-1">[ DRAGGING ]</p>
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
+        ) : (
+          <ListView
+            columns={filteredColumns}
+            onEditTask={(task, colId) => setEditingTask({ task, columnId: colId })}
+            onToggleComplete={onToggleComplete}
+          />
+        )}
       </div>
 
       <footer className="border-t border-[#262626] p-3 text-center">
@@ -2117,6 +2834,28 @@ function KanbanBoard({
       </footer>
     </div>
   )
+}
+
+// ==================== TOKEN REFRESH HELPER ====================
+let refreshPromise: Promise<boolean> | null = null
+
+async function tryRefreshToken(): Promise<boolean> {
+  if (refreshPromise) return refreshPromise
+  refreshPromise = fetch("/api/auth/refresh", { method: "POST" })
+    .then((r) => r.ok)
+    .finally(() => { refreshPromise = null })
+  return refreshPromise
+}
+
+async function fetchWithRefresh(url: string, init?: RequestInit): Promise<Response> {
+  const res = await fetch(url, init)
+  if (res.status === 401) {
+    const refreshed = await tryRefreshToken()
+    if (refreshed) {
+      return fetch(url, init)
+    }
+  }
+  return res
 }
 
 // ==================== MAIN APP ====================
@@ -2132,9 +2871,9 @@ export default function BroLabTask() {
   const fetchData = useCallback(async () => {
     try {
       const [columnsRes, tasksRes, usersRes] = await Promise.all([
-        fetch("/api/columns"),
-        fetch("/api/tasks"),
-        fetch("/api/users"),
+        fetchWithRefresh("/api/columns"),
+        fetchWithRefresh("/api/tasks"),
+        fetchWithRefresh("/api/users"),
       ])
 
       const [columnsData, tasksData, usersData] = await Promise.all([
@@ -2185,7 +2924,15 @@ export default function BroLabTask() {
     const init = async () => {
       setLoadingMessage("RESTORING_SESSION...")
       try {
-        const meRes = await fetch("/api/auth/me")
+        // Primeiro tenta com o cookie atual
+        let meRes = await fetch("/api/auth/me")
+        // Se 401, tenta refresh silencioso
+        if (meRes.status === 401) {
+          const refreshed = await tryRefreshToken()
+          if (refreshed) {
+            meRes = await fetch("/api/auth/me")
+          }
+        }
         if (meRes.ok) {
           const meData = await meRes.json()
           if (meData.user) {
@@ -2202,6 +2949,15 @@ export default function BroLabTask() {
     }
     init()
   }, [fetchData])
+
+  // Auto-refresh do token a cada 30 minutos
+  useEffect(() => {
+    if (!currentUser) return
+    const interval = setInterval(() => {
+      tryRefreshToken()
+    }, 30 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [currentUser])
 
   // Subscribe to realtime notifications for current user and fetch initial list
   useEffect(() => {
@@ -2449,6 +3205,40 @@ export default function BroLabTask() {
     }
   }
 
+  // Toggle task completion (with subtask validation)
+  const handleToggleComplete = async (taskId: string) => {
+    const task = columns.flatMap(c => c.tasks).find(t => t.id === taskId)
+    if (!task) return
+    // Se está marcando como concluída, verificar subtasks pendentes
+    if (!task.isComplete) {
+      const ok = await checkSubtaskCompletion(taskId)
+      if (!ok) {
+        setPendingCloseTask({
+          taskId,
+          fromColumnId: "",
+          toColumnId: "",
+          isToggle: true,
+        })
+        return
+      }
+    }
+    await doToggleComplete(taskId, !task.isComplete)
+  }
+
+  const doToggleComplete = async (taskId: string, complete: boolean) => {
+    const task = columns.flatMap(c => c.tasks).find(t => t.id === taskId)
+    if (!task) return
+    setColumns(prev => prev.map(col => ({
+      ...col,
+      tasks: col.tasks.map(t => t.id === taskId ? { ...t, isComplete: complete } : t),
+    })))
+    await fetch("/api/tasks", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: taskId, isComplete: complete }),
+    })
+  }
+
   // Clear all notifications
   const handleClearAllNotifications = async () => {
     if (!currentUser) return
@@ -2491,6 +3281,7 @@ export default function BroLabTask() {
         onClearAllNotifications={handleClearAllNotifications}
         refreshData={fetchData}
         onReorderColumns={(cols) => setColumns(cols)}
+        onToggleComplete={handleToggleComplete}
       />
       <ToastContainer />
     </>

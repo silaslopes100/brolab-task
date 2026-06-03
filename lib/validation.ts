@@ -21,6 +21,8 @@ export const UpdateTaskSchema = z.object({
   position: z.number().optional(),
   assignees: z.array(z.string()).optional(),
   labels: z.array(z.object({ name: z.string(), color: z.string().optional() })).optional(),
+  isComplete: z.boolean().optional(),
+  isClosed: z.boolean().optional(),
 })
 
 export const DeleteTaskSchema = z.object({

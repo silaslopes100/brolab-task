@@ -36,11 +36,11 @@ export async function GET(request: NextRequest) {
 
     const [{ count: totalTasks }, tasksResult] = await Promise.all([
       hasPagination
-        ? supabase.from("tasks").select("*", { count: "exact", head: true })
+        ? supabase.from("tasks").select("*", { count: "exact", head: true }).eq("is_closed", false)
         : Promise.resolve({ count: null, error: null }),
       hasPagination
-        ? supabase.from("tasks").select("*").order("position", { ascending: true }).range((page - 1) * pageSize, page * pageSize - 1)
-        : supabase.from("tasks").select("*").order("position", { ascending: true }),
+        ? supabase.from("tasks").select("*").eq("is_closed", false).order("position", { ascending: true }).range((page - 1) * pageSize, page * pageSize - 1)
+        : supabase.from("tasks").select("*").eq("is_closed", false).order("position", { ascending: true }),
     ])
 
     const { data: tasks, error: tasksError } = tasksResult
@@ -121,6 +121,8 @@ export async function GET(request: NextRequest) {
         description: task.description || "",
         columnPosition: task.column_position,
         position: task.position,
+        isComplete: task.is_complete ?? false,
+        isClosed: task.is_closed ?? false,
         createdAt: task.created_at,
         assignees: task.assignees || [],
         labels: (task.labels || []).map((raw: string) => {
@@ -214,6 +216,8 @@ export async function POST(request: NextRequest) {
         description: task.description,
         columnPosition: task.column_position,
         position: task.position,
+        isComplete: task.is_complete ?? false,
+        isClosed: task.is_closed ?? false,
         createdAt: task.created_at,
         assignees: task.assignees || [],
         labels: (task.labels || []).map((raw: string) => {
@@ -243,7 +247,7 @@ export async function PATCH(request: NextRequest) {
     if (parsed.error) {
       return NextResponse.json({ error: parsed.error }, { status: 400 })
     }
-    const { id, title, description, columnPosition, position, assignees, labels } = parsed.data!
+    const { id, title, description, columnPosition, position, assignees, labels, isComplete, isClosed } = parsed.data!
     const supabase = createAdminClient()
 
     if (!supabase) {
@@ -261,6 +265,8 @@ export async function PATCH(request: NextRequest) {
     if (assignees !== undefined) updates.assignees = assignees
     if (labels !== undefined)
       updates.labels = labels.map((l: { name: string; color?: string }) => `${l.name}||${l.color || getLabelColor(l.name)}`)
+    if (isComplete !== undefined) updates.is_complete = isComplete
+    if (isClosed !== undefined) updates.is_closed = isClosed
 
     if (Object.keys(updates).length > 0) {
       const { error: taskError } = await supabase

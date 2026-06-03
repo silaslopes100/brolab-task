@@ -101,6 +101,15 @@
   }
 }
 
+/* Touch drag prevention */
+[data-dnd-dragging] {
+  touch-action: none;
+}
+
+.dragging-active {
+  cursor: grabbing !important;
+}
+
 /* Terminal cursor blink animation */
 @keyframes blink {
   0%, 50% { opacity: 1; }
