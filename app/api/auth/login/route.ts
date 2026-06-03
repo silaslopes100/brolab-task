@@ -1,6 +1,8 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { NextRequest, NextResponse } from "next/server"
 
+const BCRYPT_PREFIX = "$2a$"
+
 export async function POST(request: NextRequest) {
   try {
     const { email, password } = await request.json()
@@ -48,7 +50,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
+<<<<<<< HEAD
     if (user.password !== password) {
+=======
+    let passwordValid = false
+
+    if (user.password.startsWith(BCRYPT_PREFIX)) {
+      passwordValid = await bcrypt.compare(password, user.password)
+    } else if (user.password === password) {
+      passwordValid = true
+      const hashed = await bcrypt.hash(password, 10)
+      await supabase.from("team_members").update({ password: hashed }).eq("id", user.id)
+    }
+
+    if (!passwordValid) {
+>>>>>>> parent of 6786381 (renomear função de middleware para proxy e ajustar lógica de autenticação)
       return NextResponse.json(
         { error: "ERRO: CREDENCIAIS_INVÁLIDAS" },
         { status: 401 },
