@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const mentions = (content.match(/@([\w]+)/g) || [])
+    const mentions = (content.match(/@[\w.à-úÀ-Ú]+/g) || [])
     if (mentions.length > 0) {
       const { data: mentionedUsers, error: usersError } = await supabase
         .from('team_members')
@@ -129,25 +129,27 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const { searchParams } = new URL(request.url)
-  const id = searchParams.get("id")
+  try {
+    const { searchParams } = new URL(request.url)
+    const id = searchParams.get("id")
 
-  if (!id) {
-    return NextResponse.json({ error: "ID obrigatório" }, { status: 400 })
-  }
+    if (!id) {
+      return NextResponse.json({ error: "ID obrigatório" }, { status: 400 })
+    }
 
-  const supabase = createAdminClient()
-  if (!supabase) {
-    return NextResponse.json(
-      { error: "ERRO: SUPABASE_SERVICE_ROLE_KEY_NAO_CONFIGURADA" },
-      { status: 500 },
-    )
-  }
+    const supabase = createAdminClient()
+    if (!supabase) {
+      return NextResponse.json(
+        { error: "ERRO: SUPABASE_SERVICE_ROLE_KEY_NAO_CONFIGURADA" },
+        { status: 500 },
+      )
+    }
 
-  const { error } = await supabase.from("task_comments").delete().eq("id", id)
-  if (error) {
-    console.error("Error deleting comment:", error)
+    const { error } = await supabase.from("task_comments").delete().eq("id", id)
+    if (error) throw error
+    return NextResponse.json({ success: true })
+  } catch (err) {
+    console.error("Error deleting comment:", err)
     return NextResponse.json({ success: false }, { status: 500 })
   }
-  return NextResponse.json({ success: true })
 }

@@ -9,7 +9,7 @@ export async function GET() {
     }
     const [columnsRes, tasksRes] = await Promise.all([
       supabase.from("columns").select("*").order("position"),
-      supabase.from("tasks").select("*").eq("is_closed", true).order("updated_at", { ascending: false }),
+      supabase.from("tasks").select("*").eq("is_closed", true).order("created_at", { ascending: false }),
     ])
     if (tasksRes.error) throw tasksRes.error
     const columnsMap = new Map((columnsRes.data || []).map((c) => [c.position, c.name]))
@@ -18,7 +18,7 @@ export async function GET() {
       title: t.title,
       description: t.description,
       columnName: columnsMap.get(t.column_position) || "N/A",
-      updatedAt: t.updated_at,
+      updatedAt: t.created_at,
       labels: (t.labels || []).map((raw: string) => {
         const [name, color] = raw.split("||")
         return { id: name, name, color: color || "#888888" }

@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
     })
 
     response.cookies.set("access_token", accessToken, {
-      httpOnly: false,
+      httpOnly: true,
       secure: isProd,
       sameSite: "lax",
       path: "/",

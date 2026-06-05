@@ -1506,6 +1506,7 @@ function SortableTaskCard({
   onEdit,
   onCancel,
   onToggleComplete,
+  isAprovadoColumn,
 }: {
   task: Task
   columnIndex: number
@@ -1518,6 +1519,7 @@ function SortableTaskCard({
   onEdit: () => void
   onCancel?: () => void
   onToggleComplete?: () => void
+  isAprovadoColumn?: boolean
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id })
   const style = {
@@ -1537,17 +1539,25 @@ function SortableTaskCard({
           : "border-[#262626] bg-[#1A1A1A] hover:border-[#00FF66]/50"
       }`}
     >
-      <button
-        onClick={(e) => { e.stopPropagation(); onToggleComplete?.() }}
-        className={`absolute top-2 right-2 w-5 h-5 flex items-center justify-center rounded-sm z-10 transition-colors ${
-          task.isComplete
-            ? "text-[#0a0a0a]"
-            : "text-[#888] hover:text-[#00ff88]"
-        }`}
-        title={task.isComplete ? "Marcar como pendente" : "Marcar como concluída"}
-      >
-        {task.isComplete ? "✓" : "○"}
-      </button>
+      {isAprovadoColumn || task.isComplete ? (
+        <button
+          onClick={(e) => { e.stopPropagation(); if (isAprovadoColumn) onToggleComplete?.() }}
+          className={`absolute top-2 right-2 w-5 h-5 flex items-center justify-center rounded-sm z-10 transition-colors ${
+            task.isComplete
+              ? "text-[#0a0a0a]"
+              : "text-[#888] hover:text-[#00ff88]"
+          } ${!isAprovadoColumn && task.isComplete ? "cursor-default" : ""}`}
+          title={
+            !isAprovadoColumn && task.isComplete
+              ? "Concluída"
+              : task.isComplete
+                ? "Marcar como pendente"
+                : "Marcar como concluída"
+          }
+        >
+          {task.isComplete ? "✓" : "○"}
+        </button>
+      ) : null}
       <div {...attributes} {...listeners} className={`text-xs mb-1 cursor-grab active:cursor-grabbing select-none ${task.isComplete ? "text-[#0a2a1a]" : "text-[#00FF66]/30"}`}>
         ⠿ {task.title ? "DRAG" : ""}
       </div>
@@ -1957,6 +1967,7 @@ function KanbanColumn({
               onEdit={() => onEditTask(task)}
               onCancel={onCancelTask ? () => onCancelTask(task) : undefined}
               onToggleComplete={() => onToggleComplete?.(task.id)}
+              isAprovadoColumn={column.name === "APROVADO"}
             />
           ))}
           {column.tasks.length === 0 && (
@@ -2358,6 +2369,7 @@ function KanbanBoard({
   refreshData,
   onReorderColumns,
   onToggleComplete,
+  checkSubtaskCompletion,
 }: {
   currentUser: TeamMember
   team: TeamMember[]
@@ -2380,6 +2392,7 @@ function KanbanBoard({
   refreshData: () => void
   onReorderColumns?: (columns: Column[]) => void
   onToggleComplete?: (taskId: string) => void
+  checkSubtaskCompletion: (taskId: string) => Promise<boolean>
 }) {
   const [showTeamModal, setShowTeamModal] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
@@ -2466,15 +2479,6 @@ function KanbanBoard({
   const isClosingColumn = (colId: string) => {
     const col = columns.find((c) => c.id === colId)
     return col?.name === "FEITO"
-  }
-
-  const checkSubtaskCompletion = async (taskId: string): Promise<boolean> => {
-    try {
-      const res = await fetch(`/api/subtasks?taskId=${taskId}`)
-      const d = await res.json()
-      const sts: Subtask[] = d.subtasks || []
-      return sts.length === 0 || sts.every((st) => st.status === "APROVADO" || st.status === "FEITO")
-    } catch { return true }
   }
 
   const handleMoveTask = async (columnId: string, taskId: string, direction: "left" | "right") => {
@@ -2999,6 +3003,16 @@ export default function BroLabTask() {
     }
   }, [currentUser, fetchNotifications])
 
+  // Check subtask completion before allowing close
+  const checkSubtaskCompletion = async (taskId: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/subtasks?taskId=${taskId}`)
+      const d = await res.json()
+      const sts: Subtask[] = d.subtasks || []
+      return sts.length === 0 || sts.every((st) => st.status === "APROVADO" || st.status === "FEITO")
+    } catch { return true }
+  }
+
   // Login handler
   const handleLogin = async (email: string, password: string) => {
     const res = await fetch("/api/auth/login", {
@@ -3282,6 +3296,7 @@ export default function BroLabTask() {
         refreshData={fetchData}
         onReorderColumns={(cols) => setColumns(cols)}
         onToggleComplete={handleToggleComplete}
+        checkSubtaskCompletion={checkSubtaskCompletion}
       />
       <ToastContainer />
     </>
