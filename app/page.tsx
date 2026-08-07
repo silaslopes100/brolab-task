@@ -2465,83 +2465,85 @@ function TaskEditModal({
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-2 md:p-4">
       <div className="w-full max-w-[1100px] max-h-[95vh] flex flex-col bg-[var(--br-bg)] border border-[var(--br-border-strong)] rounded-xl shadow-2xl overflow-hidden mx-auto">
-          <div className="border-b border-[var(--br-border)] p-4 flex justify-between items-center bg-[var(--br-bg)] z-10 shrink-0">
-            <span className="text-[var(--br-accent)] font-bold">{">"} EDIT_TASK</span>
-            <div className="flex gap-2">
-              <button
-                onClick={copyLink}
-                title="Copiar link de compartilhamento da tarefa"
-                className="text-[var(--br-accent)]/80 hover:bg-[var(--br-accent)] hover:text-black px-3 py-1 border border-[var(--br-accent)]/50 hover:border-[var(--br-accent)] transition-colors text-xs"
-              >
-                [ {copied ? "COPIADO ✓" : "COPIAR_LINK"} ]
-              </button>
-              <button
-                onClick={handleSave}
-                className="text-[var(--br-accent)] hover:bg-[var(--br-accent)] hover:text-black px-3 py-1 border border-[var(--br-accent)] transition-colors text-xs"
-              >
-                [ SAVE ]
-              </button>
-              <button
-                onClick={onClose}
-                className="text-[var(--br-danger)] hover:bg-[var(--br-danger)] hover:text-black px-2 py-1 border border-[var(--br-danger)] transition-colors text-xs"
-              >
-                [ CLOSE ]
-              </button>
-            </div>
-          </div>
-
-          <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
-            <div className="flex-1 overflow-y-auto flex flex-col lg:border-r border-[var(--br-border)]">
-              <div className="flex gap-1 px-4 pt-3 border-b border-[var(--br-border)] shrink-0">
+        <div className="border-b border-[var(--br-border)] p-4 flex justify-between items-center bg-[var(--br-bg)] z-10 shrink-0">
+          <span className="text-[var(--br-accent)] font-bold">{">"} EDIT_TASK</span>
+          <div className="flex gap-2">
             <button
-              onClick={() => setActiveTab("details")}
-              className={`h-8 px-3 text-xs border-t border-l border-r rounded-t-md transition-colors ${
-                activeTab === "details"
-                  ? "border-[var(--br-accent)] bg-[var(--br-accent)] text-black font-bold"
-                  : "border-[var(--br-border)] text-[var(--br-text-secondary)] hover:border-[var(--br-accent)]"
-              }`}
+              onClick={copyLink}
+              title="Copiar link de compartilhamento da tarefa"
+              className="text-[var(--br-accent)]/80 hover:bg-[var(--br-accent)] hover:text-black px-3 py-1 border border-[var(--br-accent)]/50 hover:border-[var(--br-accent)] transition-colors text-xs rounded-sm"
             >
-              [ DETALHES ]
+              [ {copied ? "COPIADO ✓" : "COPIAR_LINK"} ]
             </button>
             <button
-              onClick={() => setActiveTab("activity")}
-              className={`h-8 px-3 text-xs border-t border-l border-r rounded-t-md transition-colors ${
-                activeTab === "activity"
-                  ? "border-[var(--br-accent)] bg-[var(--br-accent)] text-black font-bold"
-                  : "border-[var(--br-border)] text-[var(--br-text-secondary)] hover:border-[var(--br-accent)]"
-              }`}
+              onClick={handleSave}
+              className="text-[var(--br-accent)] hover:bg-[var(--br-accent)] hover:text-black px-3 py-1 border border-[var(--br-accent)] transition-colors text-xs rounded-sm"
             >
-              [ ATIVIDADE ]
+              [ SAVE ]
             </button>
             <button
-              onClick={() => setActiveTab("git")}
-              className={`h-8 px-3 text-xs border-t border-l border-r rounded-t-md transition-colors ${
-                activeTab === "git"
-                  ? "border-[var(--br-accent)] bg-[var(--br-accent)] text-black font-bold"
-                  : "border-[var(--br-border)] text-[var(--br-text-secondary)] hover:border-[var(--br-accent)]"
-              }`}
+              onClick={onClose}
+              className="text-[var(--br-danger)] hover:bg-[var(--br-danger)] hover:text-black px-2 py-1 border border-[var(--br-danger)] transition-colors text-xs rounded-sm"
             >
-              [ GIT ]
+              [ CLOSE ]
             </button>
           </div>
+        </div>
 
-          {activeTab === "activity" ? (
-            <div className="p-4">
-              <div className="text-[var(--br-accent)] text-xs mb-3">{">"} HISTORICO_DE_ATIVIDADES:</div>
-              <div className="max-h-[55vh] overflow-y-auto pr-1">
-                <ActivityFeed taskId={task.id} />
-              </div>
+        <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
+          {/* MAIN AREA */}
+          <div className="flex-1 overflow-y-auto flex flex-col lg:border-r border-[var(--br-border)]">
+            <div className="flex gap-1 px-4 pt-3 border-b border-[var(--br-border)] shrink-0">
+              <button
+                onClick={() => setActiveTab("details")}
+                className={`h-8 px-3 text-xs border-t border-l border-r rounded-t-md transition-colors ${
+                  activeTab === "details"
+                    ? "border-[var(--br-accent)] bg-[var(--br-accent)] text-black font-bold"
+                    : "border-[var(--br-border)] text-[var(--br-text-secondary)] hover:border-[var(--br-accent)]"
+                }`}
+              >
+                [ DETALHES ]
+              </button>
+              <button
+                onClick={() => setActiveTab("activity")}
+                className={`h-8 px-3 text-xs border-t border-l border-r rounded-t-md transition-colors ${
+                  activeTab === "activity"
+                    ? "border-[var(--br-accent)] bg-[var(--br-accent)] text-black font-bold"
+                    : "border-[var(--br-border)] text-[var(--br-text-secondary)] hover:border-[var(--br-accent)]"
+                }`}
+              >
+                [ ATIVIDADE ]
+              </button>
+              <button
+                onClick={() => setActiveTab("git")}
+                className={`h-8 px-3 text-xs border-t border-l border-r rounded-t-md transition-colors ${
+                  activeTab === "git"
+                    ? "border-[var(--br-accent)] bg-[var(--br-accent)] text-black font-bold"
+                    : "border-[var(--br-border)] text-[var(--br-text-secondary)] hover:border-[var(--br-accent)]"
+                }`}
+              >
+                [ GIT ]
+              </button>
             </div>
-          ) : activeTab === "git" ? (
-            <div className="p-4">
-              <div className="text-[var(--br-accent)] text-xs mb-3">{">"} COMMITS_E_PRS_REFERENCIADOS (via #&lt;taskId&gt;):</div>
-              <div className="max-h-[55vh] overflow-y-auto pr-1">
-                <GitReferences taskId={task.id} />
-              </div>
-            </div>
-          ) : (
-          <div className="p-4 space-y-6">
-            <div>
+
+            <div className="p-4 md:p-6 space-y-6 flex-1">
+              {activeTab === "activity" ? (
+                <div>
+                  <div className="text-[var(--br-accent)] text-xs mb-3">{">"} HISTORICO_DE_ATIVIDADES:</div>
+                  <div className="max-h-[60vh] overflow-y-auto pr-1">
+                    <ActivityFeed taskId={task.id} />
+                  </div>
+                </div>
+              ) : activeTab === "git" ? (
+                <div>
+                  <div className="text-[var(--br-accent)] text-xs mb-3">{">"} COMMITS_E_PRS_REFERENCIADOS (via #{task.id}):</div>
+                  <div className="max-h-[60vh] overflow-y-auto pr-1">
+                    <GitReferences taskId={task.id} />
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-8">
+<div>
               <div className="text-[var(--br-accent)] text-xs mb-2">{">"} TITLE:</div>
               <input
                 type="text"
@@ -2550,8 +2552,7 @@ function TaskEditModal({
                 className="w-full h-12 px-3 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-text)] text-base focus:border-[var(--br-accent)] focus:outline-none"
               />
             </div>
-
-            <div>
+<div>
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <div className="text-[var(--br-accent)] text-xs">{">"} DESCRIPTION:</div>
@@ -2559,7 +2560,7 @@ function TaskEditModal({
                     <span className="text-[10px] text-[var(--br-warn)] animate-pulse">SALVANDO...</span>
                   )}
                   {descSaveState === "saved" && (
-                    <span className="text-[10px] text-[var(--br-accent)]">✓ SALVO</span>
+                    <span className="text-[10px] text-[var(--br-accent)]">Ô£ô SALVO</span>
                   )}
                 </div>
                 <div className="flex items-center gap-2">
@@ -2569,18 +2570,18 @@ function TaskEditModal({
                     className="flex items-center gap-1 px-2 py-1 text-[10px] border border-[var(--br-border)] rounded hover:border-[var(--br-accent-strong)] hover:text-[var(--br-accent-strong)] text-[var(--br-text-secondary)] transition-all disabled:opacity-40"
                   >
                     {improving ? (
-                      <span className="animate-pulse">✦ melhorando...</span>
+                      <span className="animate-pulse">Ô£ª melhorando...</span>
                     ) : (
-                      <>✦ melhorar com IA</>
+                      <>Ô£ª melhorar com IA</>
                     )}
                   </button>
                   {!descEditing && (
                     <button
                       onClick={() => setDescEditing(true)}
-                      title="Editar descrição"
+                      title="Editar descri├º├úo"
                       className="w-6 h-6 flex items-center justify-center border border-[var(--br-border)] text-[var(--br-accent)]/60 hover:border-[var(--br-accent)] hover:text-[var(--br-accent)] transition-colors text-xs"
                     >
-                      ✎
+                      Ô£Ä
                     </button>
                   )}
                 </div>
@@ -2605,11 +2606,7 @@ function TaskEditModal({
                 </div>
               )}
             </div>
-
-
-
-
-            <div
+<div
               ref={subtasksSectionRef}
               className={`transition-colors ${focusFlash ? "border border-[var(--br-accent)] p-2" : ""}`}
             >
@@ -2619,7 +2616,7 @@ function TaskEditModal({
                   className="text-[var(--br-accent)] text-xs hover:text-[var(--br-accent)]/70 transition-colors"
                   title={subtasksCollapsed ? "Expandir subtarefas" : "Recolher subtarefas"}
                 >
-                  {">"} SUBTASKS: {subtasksCollapsed ? "[ ▼ ]" : "[ ▲ ]"}
+                  {">"} SUBTASKS: {subtasksCollapsed ? "[ Ôû╝ ]" : "[ Ôû▓ ]"}
                 </button>
                 <div className="text-[var(--br-accent)]/50 text-[10px]">
                   EST: {totalEstimatedHours}h | REAL: {formatTime(totalTimeSpent)}
@@ -2687,8 +2684,7 @@ function TaskEditModal({
                 </>
               )}
             </div>
-
-            <div>
+<div>
               <div className="text-[var(--br-accent)] text-xs mb-2">{">"} FILES:</div>
               <div className="space-y-2 mb-3">
                 {task.files.length === 0 ? (
@@ -2724,8 +2720,7 @@ function TaskEditModal({
                   }} />
               </label>
             </div>
-
-            <div className="border border-[var(--br-border)] p-3">
+<div className="border border-[var(--br-border)] p-3">
               <div className="text-[var(--br-accent)] text-xs mb-3">{">"} COMMENT_HISTORY:</div>
               <div className="space-y-3 mb-4 max-h-60 overflow-y-auto">
                 {task.comments.length === 0 ? (
@@ -2769,16 +2764,81 @@ function TaskEditModal({
 
               <div className="text-[var(--br-accent)] text-xs mb-2">{">"} NEW_COMMENT (use @ para mencionar):</div>
               <MentionInput value={newComment} onChange={setNewComment}
-                onSubmit={handleAddComment} team={team} placeholder="Digite seu comentário..." />
+                onSubmit={handleAddComment} team={team} placeholder="Digite seu coment├írio..." />
             </div>
-
+                </div>
+              )}
+            </div>
           </div>
-          )}
+
+          {/* SIDEBAR */}
+          <div className="w-full lg:w-[320px] shrink-0 bg-[var(--br-bg-secondary)] overflow-y-auto p-4 md:p-6 space-y-6">
+
+
+            <div>
+              <div className="text-[var(--br-accent)] text-xs mb-2">{">"} LABELS:</div>
+              <LabelManager
+              labels={labels}
+              onRemove={(id) => setLabels(labels.filter((l) => l.id !== id))}
+              workspaceLabels={workspaceLabels}
+              onToggleWorkspaceLabel={async (labelId) => {
+                await fetch("/api/workspace-labels/toggle", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ cardId: task.id, labelId }),
+                })
+                const label = workspaceLabels.find(l => l.id === labelId)
+                if (!label) return
+                const exists = labels.some(l => l.id === labelId)
+                if (exists) {
+                  setLabels(labels.filter(l => l.id !== labelId))
+                } else {
+                  setLabels([...labels, label])
+                }
+              }}
+            />
+            </div>
+<div className="flex items-center justify-between">
+              <div className="text-[var(--br-accent)]/50 text-xs">
+                {">"} CREATED: {new Date(task.createdAt).toLocaleString("pt-BR")} | ID: {task.id.slice(0, 8)}...
+              </div>
+              {!confirmArchive ? (
+                <button
+                  onClick={() => setConfirmArchive(true)}
+                  className="flex items-center gap-1 px-2 py-1 text-[10px] border border-[var(--br-border)] rounded text-[var(--br-text-secondary)] hover:border-[#ffcc00] hover:text-[#ffcc00] transition-all"
+                >
+                  ­ƒùä arquivar
+                </button>
+              ) : (
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-[#ffcc00]">Confirmar?</span>
+                  <button
+                    onClick={async () => {
+                      setArchiving(true)
+                      await fetch(`/api/cards/${task.id}/archive`, { method: "POST" })
+                      onClose()
+                    }}
+                    disabled={archiving}
+                    className="px-2 py-1 bg-[#ffcc00] text-[#0a0a0a] text-[10px] rounded font-bold hover:bg-[#e6b800] transition-colors"
+                  >
+                    sim
+                  </button>
+                  <button
+                    onClick={() => setConfirmArchive(false)}
+                    className="px-2 py-1 border border-[var(--br-border)] text-[var(--br-text-secondary)] text-[10px] rounded hover:border-[var(--br-accent)] transition-colors"
+                  >
+                    n├úo
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>
   )
 }
+
 
 // ==================== TASK CARD ====================
 function SortableTaskCard({
