@@ -1,6 +1,8 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { NextRequest, NextResponse } from "next/server"
 import { CreateCommentSchema, validate } from "@/lib/validation"
+import { DEFAULT_WORKSPACE_ID } from "@/lib/labels"
+import { logActivity, resolveUserIdByUsername } from "@/lib/activities"
 
 export async function POST(request: NextRequest) {
   try {
@@ -39,6 +41,8 @@ export async function POST(request: NextRequest) {
           type: 'mention',
           message: `${authorUsername} mencionou você em "${refTitle}"`,
           task_id: taskId,
+          board_id: DEFAULT_WORKSPACE_ID,
+          subtask_id: subtaskId || undefined,
           task_title: refTitle,
           from_user: authorUsername,
           read: false,
@@ -60,6 +64,26 @@ export async function POST(request: NextRequest) {
       .select()
       .single()
     if (error) throw error
+
+    // Histórico de atividades: comentário adicionado
+    let activityTaskId = taskId
+    if (!activityTaskId && subtaskId) {
+      const { data: st } = await supabase
+        .from("subtasks")
+        .select("task_id")
+        .eq("id", subtaskId)
+        .single()
+      activityTaskId = st?.task_id || null
+    }
+    if (activityTaskId) {
+      const authorId = await resolveUserIdByUsername(supabase, authorUsername)
+      await logActivity(supabase, {
+        taskId: activityTaskId,
+        userId: authorId,
+        action: "comment",
+        newValue: { content: comment.content, subtaskId: subtaskId || null },
+      })
+    }
 
     return NextResponse.json({
       comment: {

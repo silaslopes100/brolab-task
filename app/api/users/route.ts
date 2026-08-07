@@ -9,7 +9,7 @@ export async function GET() {
     const supabase = createAdminClient() ?? (await createClient())
     const { data: users, error } = await supabase
       .from("team_members")
-      .select("id, email, username, name, role, role_id, created_at")
+      .select("id, email, username, name, role, role_id, avatar_url, created_at")
       .order("created_at", { ascending: true })
 
     if (error) throw error
@@ -23,6 +23,7 @@ export async function GET() {
         role: u.role,
         role_id: u.role_id,
         isAdmin: u.role === "ADMIN_TOTAL" || u.role === "ADMIN",
+        avatarUrl: u.avatar_url || null,
       })),
     })
   } catch {
@@ -77,6 +78,7 @@ export async function POST(request: NextRequest) {
         role: user.role,
         role_id: user.role_id,
         isAdmin: user.role === "ADMIN_TOTAL" || user.role === "ADMIN",
+        avatarUrl: user.avatar_url || null,
       },
     })
   } catch {
@@ -159,6 +161,7 @@ export async function PATCH(request: NextRequest) {
         role: user.role,
         role_id: user.role_id,
         isAdmin: user.role === "ADMIN_TOTAL" || user.role === "ADMIN",
+        avatarUrl: user.avatar_url || null,
       },
     })
   } catch {

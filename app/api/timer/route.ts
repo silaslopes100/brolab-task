@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { NextRequest, NextResponse } from "next/server"
+import { getRequestUserId, logActivity } from "@/lib/activities"
 
 const STATUS_ORDER = ["BACKLOG", "FAZENDO", "ALTERAÇÕES", "APROVADO", "FEITO"]
 
@@ -51,10 +52,20 @@ export async function POST(request: NextRequest) {
         status: newStatus,
         timer_started_at: timerStartedAt,
         time_spent: timeSpent,
+        actual_hours: Math.round((timeSpent / 3600) * 100) / 100,
       })
       .eq("id", subtaskId)
 
     if (updateError) throw updateError
+
+    // Histórico de atividades: mudança de status da subtarefa
+    await logActivity(supabase, {
+      taskId: subtask.task_id,
+      userId: getRequestUserId(request),
+      action: "subtask_status",
+      oldValue: { subtaskId, title: subtask.title, status: oldStatus },
+      newValue: { subtaskId, title: subtask.title, status: newStatus },
+    })
 
     return NextResponse.json({
       success: true,

@@ -5,12 +5,19 @@ export const LoginSchema = z.object({
   password: z.string().min(1, "Senha obrigatória"),
 })
 
+const TaskLabelSchema = z.object({
+  id: z.string().optional(),
+  name: z.string(),
+  color: z.string().optional(),
+})
+
 export const CreateTaskSchema = z.object({
   title: z.string().min(1, "Título obrigatório"),
   description: z.string().optional().default(""),
   position: z.number().optional(),
   assignees: z.array(z.string()).optional().default([]),
-  labels: z.array(z.object({ name: z.string(), color: z.string().optional() })).optional().default([]),
+  labels: z.array(TaskLabelSchema).optional().default([]),
+  assigneeId: z.string().uuid("ID inválido").nullable().optional(),
 })
 
 export const UpdateTaskSchema = z.object({
@@ -20,9 +27,11 @@ export const UpdateTaskSchema = z.object({
   columnPosition: z.number().optional(),
   position: z.number().optional(),
   assignees: z.array(z.string()).optional(),
-  labels: z.array(z.object({ name: z.string(), color: z.string().optional() })).optional(),
+  labels: z.array(TaskLabelSchema).optional(),
   isComplete: z.boolean().optional(),
   isClosed: z.boolean().optional(),
+  assigneeId: z.string().uuid("ID inválido").nullable().optional(),
+  coverImageUrl: z.string().nullable().optional(),
 })
 
 export const DeleteTaskSchema = z.object({
@@ -70,6 +79,7 @@ export const CreateSubtaskSchema = z.object({
   title: z.string().min(1, "Título obrigatório"),
   description: z.string().optional().default(""),
   estimatedHours: z.number().optional().default(0),
+  actualHours: z.number().optional().default(0),
   position: z.number().optional().default(0),
 })
 

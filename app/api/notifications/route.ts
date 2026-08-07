@@ -37,6 +37,8 @@ export async function GET(request: Request) {
     type: n.type,
     message: n.message,
     taskId: n.task_id,
+    boardId: n.board_id,
+    subtaskId: n.subtask_id,
     taskTitle: n.task_title,
     fromUser: n.from_user,
     createdAt: n.created_at,

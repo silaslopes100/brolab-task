@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { showToast, ToastContainer } from "@/components/toast-notification"
+import { DEFAULT_WORKSPACE_ID } from "@/lib/labels"
+import { useTheme, type ThemeName } from "@/components/theme-provider"
 import {
   DndContext, DragOverlay, closestCorners, closestCenter, KeyboardSensor,
   PointerSensor, TouchSensor, useSensor, useSensors, useDroppable,
@@ -40,6 +42,7 @@ interface Subtask {
   status: string
   position: number
   assignees: string[]
+  assigneeId: string | null
   comments: Comment[]
   files: TaskFile[]
   timerStartedAt: string | null
@@ -55,6 +58,14 @@ interface TaskFile {
   createdAt: string
 }
 
+interface BoardSubtask {
+  id: string
+  title: string
+  status: string
+  position: number
+  assigneeId: string | null
+}
+
 interface Task {
   id: string
   title: string
@@ -64,10 +75,13 @@ interface Task {
   isComplete: boolean
   isClosed: boolean
   assignees: string[]
+  assigneeId?: string | null
+  coverImageUrl?: string | null
   labels: Label[]
   comments: Comment[]
   files: TaskFile[]
   subtaskCount?: number
+  subtasks?: BoardSubtask[]
   totalEstimatedHours?: number
   totalTimeSpent?: number
   createdAt: string
@@ -87,6 +101,7 @@ interface TeamMember {
   role: string
   email: string
   isAdmin: boolean
+  avatarUrl?: string | null
 }
 
 interface Notification {
@@ -94,6 +109,8 @@ interface Notification {
   type: "mention" | "assignment" | "comment"
   message: string
   taskId: string
+  boardId?: string | null
+  subtaskId?: string | null
   taskTitle: string
   fromUser: string
   createdAt: string
@@ -102,18 +119,18 @@ interface Notification {
 
 // ==================== LABEL COLORS ====================
 const LABEL_COLORS = [
-  { name: "Vermelho", value: "#ff4444" },
+  { name: "Vermelho", value: "#f04444" },
   { name: "Laranja", value: "#ff8844" },
   { name: "Amarelo", value: "#ffcc00" },
-  { name: "Verde", value: "#00ff88" },
+  { name: "Verde", value: "#00dd77" },
   { name: "Verde escuro", value: "#00aa55" },
   { name: "Ciano", value: "#00ccff" },
   { name: "Azul", value: "#4488ff" },
   { name: "Roxo", value: "#aa44ff" },
   { name: "Rosa", value: "#ff44aa" },
-  { name: "Cinza", value: "#888888" },
-  { name: "Branco", value: "#f0f0f0" },
-  { name: "Preto", value: "#2a2a2a" },
+  { name: "Cinza", value: "#8e8e8e" },
+  { name: "Branco", value: "#fafafa" },
+  { name: "Preto", value: "#3f3f3f" },
 ]
 
 // ==================== DEFAULT COLUMN IDS ====================
@@ -145,23 +162,23 @@ function LoginScreen({
   }
 
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center p-4">
-      <div className="border-2 border-[#00FF66] p-6 md:p-10 w-full max-w-md">
+    <div className="min-h-screen bg-[var(--br-bg)] flex items-center justify-center p-4">
+      <div className="border-2 border-[var(--br-accent)] p-6 md:p-10 w-full max-w-md">
         <div className="text-center mb-6">
-          <div className="text-[#00FF66] text-2xl md:text-3xl font-bold mb-2">
+          <div className="text-[var(--br-accent)] text-2xl md:text-3xl font-bold mb-2">
             BRO.LABS
           </div>
-          <div className="text-[#00FF66]/70 text-sm">{"// AUTH_REQUIRED"}</div>
+          <div className="text-[var(--br-accent)]/70 text-sm">{"// AUTH_REQUIRED"}</div>
         </div>
 
-        <div className="border border-[#262626] p-4 mb-6">
-          <div className="text-[#00FF66]/50 text-xs mb-2">
+        <div className="border border-[var(--br-border)] p-4 mb-6">
+          <div className="text-[var(--br-accent)]/50 text-xs mb-2">
             {">"} SYSTEM_STATUS: SECURE
           </div>
-          <div className="text-[#00FF66]/50 text-xs mb-2">
+          <div className="text-[var(--br-accent)]/50 text-xs mb-2">
             {">"} CONNECTION: SUPABASE_ENCRYPTED
           </div>
-          <div className="text-[#00FF66]/50 text-xs">
+          <div className="text-[var(--br-accent)]/50 text-xs">
             {">"} AWAITING_CREDENTIALS...
             <span className="animate-pulse">_</span>
           </div>
@@ -169,7 +186,7 @@ function LoginScreen({
 
         <div className="space-y-4 mb-6">
           <div>
-            <div className="text-[#00FF66] text-xs mb-2">
+            <div className="text-[var(--br-accent)] text-xs mb-2">
               {">"} EMAIL / USERNAME:
             </div>
             <input
@@ -177,24 +194,24 @@ function LoginScreen({
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="email@domain.com ou @username"
-              className="w-full h-14 px-4 bg-[#1A1A1A] border border-[#262626] text-white text-base placeholder:text-[#00FF66]/30 focus:border-[#00FF66] focus:outline-none"
+              className="w-full h-14 px-4 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-text)] text-base placeholder:text-[var(--br-accent)]/30 focus:border-[var(--br-accent)] focus:outline-none"
             />
           </div>
           <div>
-            <div className="text-[#00FF66] text-xs mb-2">{">"} PASSWORD:</div>
+            <div className="text-[var(--br-accent)] text-xs mb-2">{">"} PASSWORD:</div>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="********"
-              className="w-full h-14 px-4 bg-[#1A1A1A] border border-[#262626] text-white text-base placeholder:text-[#00FF66]/30 focus:border-[#00FF66] focus:outline-none"
+              className="w-full h-14 px-4 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-text)] text-base placeholder:text-[var(--br-accent)]/30 focus:border-[var(--br-accent)] focus:outline-none"
               onKeyDown={(e) => e.key === "Enter" && handleLogin()}
             />
           </div>
         </div>
 
         {error && (
-          <div className="border border-[#FF3333] bg-[#FF3333]/10 p-3 mb-4 text-[#FF3333] text-xs">
+          <div className="border border-[var(--br-danger)] bg-[var(--br-danger)]/10 p-3 mb-4 text-[var(--br-danger)] text-xs">
             {error}
           </div>
         )}
@@ -202,7 +219,7 @@ function LoginScreen({
         <button
           onClick={handleLogin}
           disabled={isLoading || externalLoading || !email || !password}
-          className="w-full h-14 border-2 border-[#00FF66] bg-black text-[#00FF66] font-mono text-sm hover:bg-[#00FF66] hover:text-black transition-colors active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full h-14 border-2 border-[var(--br-accent)] bg-[var(--br-bg)] text-[var(--br-accent)] font-mono text-sm hover:bg-[var(--br-accent)] hover:text-black transition-colors active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isLoading || externalLoading ? (
             <span className="flex items-center justify-center gap-2">
@@ -214,7 +231,7 @@ function LoginScreen({
           )}
         </button>
 
-        <div className="mt-6 text-center text-[#00FF66]/30 text-xs">
+        <div className="mt-6 text-center text-[var(--br-accent)]/30 text-xs">
           BROLABTASK_CLI_v2.0 © BRO.LABS | SUPABASE_CONNECTED
         </div>
       </div>
@@ -235,11 +252,11 @@ function NotificationBell({
   return (
     <button
       onClick={onOpen}
-      className="relative h-10 px-3 border border-[#262626] text-[#00FF66] text-sm hover:border-[#00FF66] transition-colors"
+      className="relative h-10 px-3 border border-[var(--br-border)] text-[var(--br-accent)] text-sm hover:border-[var(--br-accent)] transition-colors"
     >
       [ NOTIF ]
       {unreadCount > 0 && (
-        <span className="absolute -top-1 -right-1 w-4 h-4 bg-[#FF3333] text-black text-xs flex items-center justify-center animate-pulse">
+        <span className="absolute -top-1 -right-1 w-4 h-4 bg-[var(--br-danger)] text-black text-xs flex items-center justify-center animate-pulse">
           {unreadCount}
         </span>
       )}
@@ -271,6 +288,25 @@ function NotificationsModal({
     if (typeof window !== "undefined") localStorage.setItem("bro:notif:filter", val)
   }
 
+  const handleOpenNotification = async (notif: Notification) => {
+    if (!notif.taskId) {
+      onMarkRead(notif.id)
+      return
+    }
+    try {
+      await fetch("/api/notifications", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: notif.id, isRead: true }),
+      })
+    } catch {
+      // segue para a navegação mesmo assim
+    }
+    const boardId = notif.boardId || DEFAULT_WORKSPACE_ID
+    const url = `/board/${boardId}/task/${notif.taskId}${notif.subtaskId ? `?subtask=${notif.subtaskId}` : ""}`
+    window.location.href = url
+  }
+
   const filtered = notifications.filter((n) => {
     if (filterUser === "all") return true
     if (filterUser === "mine") return n.fromUser === ""
@@ -278,32 +314,32 @@ function NotificationsModal({
   })
 
   return (
-    <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4">
-      <div className="border-2 border-[#00FF66] bg-black w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
-        <div className="border-b border-[#00FF66] p-4 flex justify-between items-center">
-          <span className="text-[#00FF66] font-bold">{">"} NOTIFICATIONS</span>
+    <div className="fixed inset-0 bg-[var(--br-overlay)] z-50 flex items-center justify-center p-4">
+      <div className="border-2 border-[var(--br-accent)] bg-[var(--br-bg)] w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="border-b border-[var(--br-accent)] p-4 flex justify-between items-center">
+          <span className="text-[var(--br-accent)] font-bold">{">"} NOTIFICATIONS</span>
           <div className="flex gap-2">
             <button
               onClick={onClearAll}
-              className="text-[#00FF66]/50 hover:text-[#00FF66] text-xs px-2 py-1 border border-[#262626] hover:border-[#00FF66] transition-colors"
+              className="text-[var(--br-accent)]/50 hover:text-[var(--br-accent)] text-xs px-2 py-1 border border-[var(--br-border)] hover:border-[var(--br-accent)] transition-colors"
             >
               [ CLEAR_ALL ]
             </button>
             <button
               onClick={onClose}
-              className="text-[#FF3333] hover:bg-[#FF3333] hover:text-black px-2 py-1 border border-[#FF3333] transition-colors text-xs"
+              className="text-[var(--br-danger)] hover:bg-[var(--br-danger)] hover:text-black px-2 py-1 border border-[var(--br-danger)] transition-colors text-xs"
             >
               [ CLOSE ]
             </button>
           </div>
         </div>
 
-        <div className="border-b border-[#262626] px-4 py-2 flex items-center gap-2">
-          <span className="text-[#00FF66]/50 text-xs">FILTRO:</span>
+        <div className="border-b border-[var(--br-border)] px-4 py-2 flex items-center gap-2">
+          <span className="text-[var(--br-accent)]/50 text-xs">FILTRO:</span>
           <select
             value={filterUser}
             onChange={(e) => handleFilterChange(e.target.value)}
-            className="flex-1 h-8 bg-[#1A1A1A] border border-[#262626] text-[#00FF66] text-xs focus:border-[#00FF66] focus:outline-none"
+            className="flex-1 h-8 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-accent)] text-xs focus:border-[var(--br-accent)] focus:outline-none"
           >
             <option value="all">Todos</option>
             <option value="mine">Apenas minhas</option>
@@ -311,12 +347,12 @@ function NotificationsModal({
               <option key={m.id} value={m.username}>{m.username}</option>
             ))}
           </select>
-          <span className="text-[#888] text-xs">{filtered.length}</span>
+          <span className="text-[var(--br-text-secondary)] text-xs">{filtered.length}</span>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4">
           {filtered.length === 0 ? (
-            <div className="text-[#00FF66]/50 text-sm text-center py-8">
+            <div className="text-[var(--br-accent)]/50 text-sm text-center py-8">
               {">"} NO_NOTIFICATIONS
             </div>
           ) : (
@@ -324,23 +360,25 @@ function NotificationsModal({
               {filtered.map((notif) => (
                 <div
                   key={notif.id}
-                  onClick={() => onMarkRead(notif.id)}
+                  onClick={() => handleOpenNotification(notif)}
+                  title={notif.taskId ? "Abrir tarefa" : undefined}
                   className={`border p-3 cursor-pointer transition-colors ${
                     notif.read
-                      ? "border-[#262626] bg-[#1A1A1A]"
-                      : "border-[#00FF66] bg-[#00FF66]/5"
+                      ? "border-[var(--br-border)] bg-[var(--br-bg-secondary)] hover:border-[var(--br-accent)]/50"
+                      : "border-[var(--br-accent)] bg-[var(--br-accent)]/5 hover:bg-[var(--br-accent)]/10"
                   }`}
                 >
                   <div className="flex items-start gap-2">
                     {!notif.read && (
-                      <span className="w-2 h-2 bg-[#00FF66] mt-1.5 flex-shrink-0" />
+                      <span className="w-2 h-2 bg-[var(--br-accent)] mt-1.5 flex-shrink-0" />
                     )}
                     <div className="flex-1 min-w-0">
-                      <div className="text-white text-sm break-words">
+                      <div className="text-[var(--br-text)] text-sm break-words">
                         {notif.message}
                       </div>
-                      <div className="text-[#00FF66]/50 text-xs mt-1">
+                      <div className="text-[var(--br-accent)]/50 text-xs mt-1">
                         {notif.fromUser && <span>@{notif.fromUser} | </span>}
+                        {notif.subtaskId && <span className="text-[var(--br-warn)]">SUBTAREFA | </span>}
                         {notif.taskTitle} | {new Date(notif.createdAt).toLocaleString("pt-BR")}
                       </div>
                     </div>
@@ -360,15 +398,54 @@ function ProfileEditModal({
   user,
   onClose,
   onSave,
+  onAvatarUpdated,
 }: {
   user: TeamMember
   onClose: () => void
   onSave: (updates: Partial<TeamMember> & { password?: string }) => void
+  onAvatarUpdated?: (avatarUrl: string) => void
 }) {
   const [name, setName] = useState(user.name)
   const [email, setEmail] = useState(user.email)
   const [password, setPassword] = useState("")
   const [role, setRole] = useState(user.role)
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(user.avatarUrl || null)
+  const [uploading, setUploading] = useState(false)
+
+  const handleAvatarFile = async (file: File | undefined) => {
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) {
+      showToast("ERRO: ARQUIVO_DEVE_TER_NO_MAXIMO_5MB", "error")
+      return
+    }
+    if (!["image/jpeg", "image/png"].includes(file.type)) {
+      showToast("ERRO: TIPO_INVALIDO_SOMENTE_JPEG_OU_PNG", "error")
+      return
+    }
+    const localPreview = URL.createObjectURL(file)
+    setAvatarPreview(localPreview)
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append("userId", user.id)
+      formData.append("file", file)
+      const res = await fetch("/api/user/avatar", { method: "POST", body: formData })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok && data.user?.avatarUrl) {
+        setAvatarPreview(data.user.avatarUrl)
+        onAvatarUpdated?.(data.user.avatarUrl)
+        showToast("AVATAR_ATUALIZADO", "success")
+      } else {
+        showToast(data.error || "ERRO: FALHA_AO_ENVIAR_AVATAR", "error")
+        setAvatarPreview(user.avatarUrl || null)
+      }
+    } catch {
+      showToast("ERRO: FALHA_AO_ENVIAR_AVATAR", "error")
+      setAvatarPreview(user.avatarUrl || null)
+    } finally {
+      setUploading(false)
+    }
+  }
 
   const handleSave = () => {
     const updates: Partial<TeamMember> & { password?: string } = {
@@ -384,13 +461,13 @@ function ProfileEditModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4">
-      <div className="border-2 border-[#00FF66] bg-black w-full max-w-md">
-        <div className="border-b border-[#00FF66] p-4 flex justify-between items-center">
-          <span className="text-[#00FF66] font-bold">{">"} EDIT_PROFILE</span>
+    <div className="fixed inset-0 bg-[var(--br-overlay)] z-50 flex items-center justify-center p-4">
+      <div className="border-2 border-[var(--br-accent)] bg-[var(--br-bg)] w-full max-w-md">
+        <div className="border-b border-[var(--br-accent)] p-4 flex justify-between items-center">
+          <span className="text-[var(--br-accent)] font-bold">{">"} EDIT_PROFILE</span>
           <button
             onClick={onClose}
-            className="text-[#FF3333] hover:bg-[#FF3333] hover:text-black px-2 py-1 border border-[#FF3333] transition-colors text-xs"
+            className="text-[var(--br-danger)] hover:bg-[var(--br-danger)] hover:text-black px-2 py-1 border border-[var(--br-danger)] transition-colors text-xs"
           >
             [ CLOSE ]
           </button>
@@ -398,51 +475,277 @@ function ProfileEditModal({
 
         <div className="p-4 space-y-4">
           <div>
-            <div className="text-[#00FF66] text-xs mb-2">{">"} NAME:</div>
+            <div className="text-[var(--br-accent)] text-xs mb-2">{">"} PROFILE_PHOTO (JPEG/PNG, máx. 2MB):</div>
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 shrink-0 overflow-hidden rounded-full border-2 border-[var(--br-accent)] bg-[var(--br-bg-secondary)]">
+                {avatarPreview ? (
+                  <img src={avatarPreview} alt="Avatar" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-[var(--br-accent)] font-bold">
+                    {name.split(/\s+/).map((p) => p[0]).join("").slice(0, 2).toUpperCase()}
+                  </div>
+                )}
+              </div>
+              <label className={`cursor-pointer h-10 px-3 border border-[var(--br-accent)] text-[var(--br-accent)] text-xs flex items-center hover:bg-[var(--br-accent)] hover:text-black transition-colors ${uploading ? "opacity-50 pointer-events-none" : ""}`}>
+                {uploading ? "[ ENVIANDO... ]" : "[ ENVIAR_FOTO ]"}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png"
+                  className="hidden"
+                  disabled={uploading}
+                  onChange={(e) => {
+                    handleAvatarFile(e.target.files?.[0])
+                    e.target.value = ""
+                  }}
+                />
+              </label>
+            </div>
+          </div>
+          <div>
+            <div className="text-[var(--br-accent)] text-xs mb-2">{">"} NAME:</div>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full h-12 px-3 bg-[#1A1A1A] border border-[#262626] text-white text-base focus:border-[#00FF66] focus:outline-none"
+              className="w-full h-12 px-3 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-text)] text-base focus:border-[var(--br-accent)] focus:outline-none"
             />
           </div>
           <div>
-            <div className="text-[#00FF66] text-xs mb-2">{">"} EMAIL:</div>
+            <div className="text-[var(--br-accent)] text-xs mb-2">{">"} EMAIL:</div>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full h-12 px-3 bg-[#1A1A1A] border border-[#262626] text-white text-base focus:border-[#00FF66] focus:outline-none"
+              className="w-full h-12 px-3 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-text)] text-base focus:border-[var(--br-accent)] focus:outline-none"
             />
           </div>
           <div>
-            <div className="text-[#00FF66] text-xs mb-2">{">"} NEW_PASSWORD (deixe vazio para manter):</div>
+            <div className="text-[var(--br-accent)] text-xs mb-2">{">"} NEW_PASSWORD (deixe vazio para manter):</div>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="********"
-              className="w-full h-12 px-3 bg-[#1A1A1A] border border-[#262626] text-white text-base placeholder:text-[#00FF66]/30 focus:border-[#00FF66] focus:outline-none"
+              className="w-full h-12 px-3 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-text)] text-base placeholder:text-[var(--br-accent)]/30 focus:border-[var(--br-accent)] focus:outline-none"
             />
           </div>
           <div>
-            <div className="text-[#00FF66] text-xs mb-2">{">"} ROLE:</div>
+            <div className="text-[var(--br-accent)] text-xs mb-2">{">"} ROLE:</div>
             <input
               type="text"
               value={role}
               onChange={(e) => setRole(e.target.value)}
-              className="w-full h-12 px-3 bg-[#1A1A1A] border border-[#262626] text-white text-base focus:border-[#00FF66] focus:outline-none"
+              className="w-full h-12 px-3 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-text)] text-base focus:border-[var(--br-accent)] focus:outline-none"
             />
           </div>
-          <div className="text-[#00FF66]/50 text-xs">
+          <div className="text-[var(--br-accent)]/50 text-xs">
             {">"} ROLE_ID: {user.id}
           </div>
           <button
             onClick={handleSave}
-            className="w-full h-12 border border-[#00FF66] text-[#00FF66] text-xs hover:bg-[#00FF66] hover:text-black transition-colors"
+            className="w-full h-12 border border-[var(--br-accent)] text-[var(--br-accent)] text-xs hover:bg-[var(--br-accent)] hover:text-black transition-colors"
           >
             [ SAVE_CHANGES ]
           </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ==================== COVER PICKER MODAL ====================
+function CoverPickerModal({
+  task,
+  onClose,
+  onCoverUpdated,
+}: {
+  task: Task
+  onClose: () => void
+  onCoverUpdated: (coverImageUrl: string | null) => void
+}) {
+  const [tab, setTab] = useState<"upload" | "bank">("upload")
+  const [uploading, setUploading] = useState(false)
+  const [query, setQuery] = useState("")
+  const [searching, setSearching] = useState(false)
+  const [results, setResults] = useState<Array<{ id: string; thumb: string; regular: string; alt: string; creditName: string; creditLink: string }>>([])
+  const [searchError, setSearchError] = useState<string | null>(null)
+
+  const handleUpload = async (file: File | undefined) => {
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) {
+      showToast("ERRO: ARQUIVO_DEVE_TER_NO_MAXIMO_5MB", "error")
+      return
+    }
+    if (!["image/jpeg", "image/png"].includes(file.type)) {
+      showToast("ERRO: TIPO_INVALIDO_SOMENTE_JPEG_OU_PNG", "error")
+      return
+    }
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append("taskId", task.id)
+      formData.append("file", file)
+      const res = await fetch("/api/tasks/cover", { method: "POST", body: formData })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok && data.coverImageUrl) {
+        onCoverUpdated(data.coverImageUrl)
+        showToast("CAPA_ADICIONADA", "success")
+        onClose()
+      } else {
+        showToast(data.error || "ERRO: FALHA_AO_ENVIAR_CAPA", "error")
+      }
+    } catch {
+      showToast("ERRO: FALHA_AO_ENVIAR_CAPA", "error")
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleSearch = async () => {
+    if (!query.trim()) return
+    setSearching(true)
+    setSearchError(null)
+    try {
+      const res = await fetch(`/api/unsplash?query=${encodeURIComponent(query.trim())}`)
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) {
+        setResults(data.results || [])
+      } else {
+        setSearchError(data.error || "ERRO: FALHA_AO_BUSCAR_IMAGENS")
+      }
+    } catch {
+      setSearchError("ERRO: FALHA_AO_BUSCAR_IMAGENS")
+    } finally {
+      setSearching(false)
+    }
+  }
+
+  const handlePickUnsplash = (img: { regular: string; alt: string; creditName: string; creditLink: string }) => {
+    onCoverUpdated(img.regular)
+    showToast(`CAPA_ADICIONADA (${img.creditName ? "por " + img.creditName : "Unsplash"})`, "success")
+    onClose()
+  }
+
+  const handleRemove = async () => {
+    try {
+      const res = await fetch(`/api/tasks/cover?taskId=${task.id}`, { method: "DELETE" })
+      if (res.ok) {
+        onCoverUpdated(null)
+        showToast("CAPA_REMOVIDA", "success")
+        onClose()
+      } else {
+        const data = await res.json().catch(() => ({}))
+        showToast(data.error || "ERRO: FALHA_AO_REMOVER_CAPA", "error")
+      }
+    } catch {
+      showToast("ERRO: FALHA_AO_REMOVER_CAPA", "error")
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-[var(--br-overlay)] z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="border-2 border-[var(--br-accent)] bg-[var(--br-bg)] w-full max-w-lg max-h-[85vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="border-b border-[var(--br-accent)] p-4 flex justify-between items-center">
+          <span className="text-[var(--br-accent)] font-bold">{">"} CAPA: {task.title}</span>
+          <button
+            onClick={onClose}
+            className="text-[var(--br-danger)] hover:bg-[var(--br-danger)] hover:text-black px-2 py-1 border border-[var(--br-danger)] transition-colors text-xs"
+          >
+            [ CLOSE ]
+          </button>
+        </div>
+
+        <div className="p-4 space-y-4 overflow-y-auto">
+          {task.coverImageUrl && (
+            <div className="flex items-center gap-3">
+              <div className="w-24 h-14 shrink-0 border border-[var(--br-border)] bg-center bg-cover" style={{ backgroundImage: `url("${task.coverImageUrl}")` }} />
+              <button
+                onClick={handleRemove}
+                className="h-8 px-3 border border-[var(--br-danger)] text-[var(--br-danger)] text-xs hover:bg-[var(--br-danger)] hover:text-black transition-colors"
+              >
+                [ REMOVER_CAPA ]
+              </button>
+            </div>
+          )}
+
+          <div className="flex gap-1">
+            {(["upload", "bank"] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`h-8 px-3 text-xs border transition-colors ${
+                  tab === t
+                    ? "border-[var(--br-accent)] bg-[var(--br-accent)] text-black font-bold"
+                    : "border-[var(--br-border)] text-[var(--br-text-secondary)] hover:border-[var(--br-accent)]"
+                }`}
+              >
+                {t === "upload" ? "[ UPLOAD ]" : "[ BANCO_IMAGENS ]"}
+              </button>
+            ))}
+          </div>
+
+          {tab === "upload" ? (
+            <div>
+              <div className="text-[var(--br-accent)] text-xs mb-2">{">"} UPLOAD (JPEG/PNG, máx. 5MB):</div>
+              <label className={`inline-flex items-center h-10 px-3 border border-[var(--br-accent)] text-[var(--br-accent)] text-xs cursor-pointer hover:bg-[var(--br-accent)] hover:text-black transition-colors ${uploading ? "opacity-50 pointer-events-none" : ""}`}>
+                {uploading ? "[ ENVIANDO... ]" : "[ ENVIAR_CAPA ]"}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png"
+                  className="hidden"
+                  disabled={uploading}
+                  onChange={(e) => {
+                    handleUpload(e.target.files?.[0])
+                    e.target.value = ""
+                  }}
+                />
+              </label>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="text-[var(--br-accent)] text-xs">{">"} BANCO_IMAGENS (Unsplash):</div>
+              <div className="flex gap-2">
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleSearch() }}
+                  placeholder="buscar imagem por palavra-chave..."
+                  className="flex-1 h-10 px-3 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-text)] text-sm placeholder:text-[var(--br-text-secondary)] focus:border-[var(--br-accent)] focus:outline-none"
+                />
+                <button
+                  onClick={handleSearch}
+                  disabled={!query.trim() || searching}
+                  className="h-10 px-4 border border-[var(--br-accent)] text-[var(--br-accent)] text-xs hover:bg-[var(--br-accent)] hover:text-black transition-colors disabled:opacity-50"
+                >
+                  {searching ? "[ BUSCANDO... ]" : "[ BUSCAR ]"}
+                </button>
+              </div>
+              {searchError && (
+                <div className="text-[var(--br-danger)] text-xs">{searchError}</div>
+              )}
+              {results.length > 0 && (
+                <div className="grid grid-cols-3 gap-2">
+                  {results.map((img) => (
+                    <button
+                      key={img.id}
+                      onClick={() => handlePickUnsplash(img)}
+                      title={`${img.alt}${img.creditName ? ` — por ${img.creditName}` : ""}`}
+                      className="group border border-[var(--br-border)] hover:border-[var(--br-accent)] transition-colors overflow-hidden text-left"
+                    >
+                      <div className="h-16 bg-center bg-cover" style={{ backgroundImage: `url("${img.thumb}")` }} />
+                      <div className="px-1 py-0.5 text-[9px] text-[var(--br-text-secondary)] truncate">{img.creditName || "Unsplash"}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {results.length === 0 && !searching && !searchError && (
+                <div className="text-[var(--br-accent)]/50 text-xs">NO_RESULTS_OU_AGUARDANDO_BUSCA</div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -492,15 +795,15 @@ function TeamAdminModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4">
-      <div className="border-2 border-[#00FF66] bg-black w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-        <div className="border-b border-[#00FF66] p-4 flex justify-between items-center">
-          <span className="text-[#00FF66] font-bold">
+    <div className="fixed inset-0 bg-[var(--br-overlay)] z-50 flex items-center justify-center p-4">
+      <div className="border-2 border-[var(--br-accent)] bg-[var(--br-bg)] w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="border-b border-[var(--br-accent)] p-4 flex justify-between items-center">
+          <span className="text-[var(--br-accent)] font-bold">
             {">"} TEAM_REGISTRY {currentUser.isAdmin && "[ ADMIN_MODE ]"}
           </span>
           <button
             onClick={onClose}
-            className="text-[#FF3333] hover:bg-[#FF3333] hover:text-black px-2 py-1 border border-[#FF3333] transition-colors text-xs"
+            className="text-[var(--br-danger)] hover:bg-[var(--br-danger)] hover:text-black px-2 py-1 border border-[var(--br-danger)] transition-colors text-xs"
           >
             [ CLOSE ]
           </button>
@@ -511,28 +814,29 @@ function TeamAdminModal({
             {team.map((member) => (
               <div
                 key={member.id}
-                className="border border-[#262626] p-3 bg-[#1A1A1A]"
+                className="border border-[var(--br-border)] p-3 bg-[var(--br-bg-secondary)]"
               >
                 <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
                   <div className="flex items-center gap-2">
-                    <span className="text-white font-bold text-sm">
+                    <MemberAvatar name={member.name} url={member.avatarUrl} size={24} />
+                    <span className="text-[var(--br-text)] font-bold text-sm">
                       {member.name}
                     </span>
                     {member.isAdmin && (
-                      <span className="text-[#FF3333] text-xs border border-[#FF3333] px-1">
+                      <span className="text-[var(--br-danger)] text-xs border border-[var(--br-danger)] px-1">
                         ADMIN
                       </span>
                     )}
                   </div>
-                  <div className="text-[#00FF66] text-xs">
+                  <div className="text-[var(--br-accent)] text-xs">
                     @{member.username} | [{member.role}]
                   </div>
-                  <div className="text-[#00FF66]/50 text-xs md:ml-auto flex items-center gap-2">
+                  <div className="text-[var(--br-accent)]/50 text-xs md:ml-auto flex items-center gap-2">
                     {member.email}
                     {currentUser.isAdmin && member.id !== currentUser.id && (
                       <button
                         onClick={() => onDeleteMember(member.id)}
-                        className="text-[#FF3333] hover:bg-[#FF3333] hover:text-black px-2 py-1 border border-[#FF3333] transition-colors"
+                        className="text-[var(--br-danger)] hover:bg-[var(--br-danger)] hover:text-black px-2 py-1 border border-[var(--br-danger)] transition-colors"
                       >
                         DEL
                       </button>
@@ -548,13 +852,13 @@ function TeamAdminModal({
               {!showAddForm ? (
                 <button
                   onClick={() => setShowAddForm(true)}
-                  className="mt-4 w-full h-12 border border-[#00FF66] text-[#00FF66] text-xs hover:bg-[#00FF66] hover:text-black transition-colors"
+                  className="mt-4 w-full h-12 border border-[var(--br-accent)] text-[var(--br-accent)] text-xs hover:bg-[var(--br-accent)] hover:text-black transition-colors"
                 >
                   [ + CREATE_USER ]
                 </button>
               ) : (
-                <div className="mt-4 border border-[#00FF66] p-4">
-                  <div className="text-[#00FF66] text-xs mb-3">
+                <div className="mt-4 border border-[var(--br-accent)] p-4">
+                  <div className="text-[var(--br-accent)] text-xs mb-3">
                     {">"} NEW_USER_ENTRY
                   </div>
                   <div className="space-y-3">
@@ -563,48 +867,48 @@ function TeamAdminModal({
                       placeholder="NAME..."
                       value={newName}
                       onChange={(e) => setNewName(e.target.value)}
-                      className="w-full h-12 px-3 bg-[#1A1A1A] border border-[#262626] text-white text-base placeholder:text-[#00FF66]/30 focus:border-[#00FF66] focus:outline-none"
+                      className="w-full h-12 px-3 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-text)] text-base placeholder:text-[var(--br-accent)]/30 focus:border-[var(--br-accent)] focus:outline-none"
                     />
                     <input
                       type="text"
                       placeholder="USERNAME (ex: joao.silva)..."
                       value={newUsername}
                       onChange={(e) => setNewUsername(e.target.value)}
-                      className="w-full h-12 px-3 bg-[#1A1A1A] border border-[#262626] text-white text-base placeholder:text-[#00FF66]/30 focus:border-[#00FF66] focus:outline-none"
+                      className="w-full h-12 px-3 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-text)] text-base placeholder:text-[var(--br-accent)]/30 focus:border-[var(--br-accent)] focus:outline-none"
                     />
                     <input
                       type="text"
                       placeholder="ROLE..."
                       value={newRole}
                       onChange={(e) => setNewRole(e.target.value)}
-                      className="w-full h-12 px-3 bg-[#1A1A1A] border border-[#262626] text-white text-base placeholder:text-[#00FF66]/30 focus:border-[#00FF66] focus:outline-none"
+                      className="w-full h-12 px-3 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-text)] text-base placeholder:text-[var(--br-accent)]/30 focus:border-[var(--br-accent)] focus:outline-none"
                     />
                     <input
                       type="email"
                       placeholder="EMAIL..."
                       value={newEmail}
                       onChange={(e) => setNewEmail(e.target.value)}
-                      className="w-full h-12 px-3 bg-[#1A1A1A] border border-[#262626] text-white text-base placeholder:text-[#00FF66]/30 focus:border-[#00FF66] focus:outline-none"
+                      className="w-full h-12 px-3 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-text)] text-base placeholder:text-[var(--br-accent)]/30 focus:border-[var(--br-accent)] focus:outline-none"
                     />
                     <input
                       type="password"
                       placeholder="PASSWORD..."
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
-                      className="w-full h-12 px-3 bg-[#1A1A1A] border border-[#262626] text-white text-base placeholder:text-[#00FF66]/30 focus:border-[#00FF66] focus:outline-none"
+                      className="w-full h-12 px-3 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-text)] text-base placeholder:text-[var(--br-accent)]/30 focus:border-[var(--br-accent)] focus:outline-none"
                     />
                     <label className="flex items-center gap-3 cursor-pointer">
                       <div
                         onClick={() => setNewIsAdmin(!newIsAdmin)}
                         className={`w-6 h-6 border flex items-center justify-center transition-colors ${
                           newIsAdmin
-                            ? "border-[#00FF66] bg-[#00FF66] text-black"
-                            : "border-[#262626]"
+                            ? "border-[var(--br-accent)] bg-[var(--br-accent)] text-black"
+                            : "border-[var(--br-border)]"
                         }`}
                       >
                         {newIsAdmin && "✓"}
                       </div>
-                      <span className="text-[#00FF66] text-xs">
+                      <span className="text-[var(--br-accent)] text-xs">
                         ADMIN_PRIVILEGES
                       </span>
                     </label>
@@ -612,13 +916,13 @@ function TeamAdminModal({
                       <button
                         onClick={handleSubmit}
                         disabled={!newName.trim() || !newEmail.trim() || !newPassword.trim()}
-                        className="flex-1 h-12 border border-[#00FF66] text-[#00FF66] text-xs hover:bg-[#00FF66] hover:text-black transition-colors disabled:opacity-50"
+                        className="flex-1 h-12 border border-[var(--br-accent)] text-[var(--br-accent)] text-xs hover:bg-[var(--br-accent)] hover:text-black transition-colors disabled:opacity-50"
                       >
                         [ CREATE ]
                       </button>
                       <button
                         onClick={() => setShowAddForm(false)}
-                        className="h-12 px-4 border border-[#262626] text-[#00FF66]/50 text-xs hover:border-[#00FF66] transition-colors"
+                        className="h-12 px-4 border border-[var(--br-border)] text-[var(--br-accent)]/50 text-xs hover:border-[var(--br-accent)] transition-colors"
                       >
                         [ CANCEL ]
                       </button>
@@ -650,54 +954,42 @@ function LabelBadge({ label }: { label: Label }) {
   )
 }
 
-// ==================== LABEL MANAGER ====================
+// ==================== LABEL MANAGER (seletor no cartão) ====================
 function LabelManager({
   labels,
-  onAdd,
   onRemove,
-  taskId,
   workspaceLabels,
   onToggleWorkspaceLabel,
 }: {
   labels: Label[]
-  onAdd: (label: Label) => void
   onRemove: (id: string) => void
-  taskId?: string
   workspaceLabels?: Label[]
   onToggleWorkspaceLabel?: (labelId: string) => void
 }) {
-  const [showForm, setShowForm] = useState(false)
-  const [newName, setNewName] = useState("")
-  const [selectedColor, setSelectedColor] = useState(LABEL_COLORS[0].value)
   const [search, setSearch] = useState("")
 
-  const handleAdd = async () => {
-    if (newName.trim()) {
-      onAdd({
-        id: Date.now().toString(),
-        name: newName.trim().toUpperCase(),
-        color: selectedColor,
-      })
-      setNewName("")
-      setSelectedColor(LABEL_COLORS[0].value)
-      setShowForm(false)
-    }
-  }
+  // Resolve nomes/cores atuais a partir dos labels globais (sync de renomeação)
+  const resolvedLabels = labels.map(
+    (l) => workspaceLabels?.find((w) => w.id === l.id) || l,
+  )
 
   const filteredWorkspace = (workspaceLabels || []).filter(l =>
     l.name.toLowerCase().includes(search.toLowerCase())
   )
 
   return (
-    <div className="border border-[#262626] p-3">
-      <div className="text-[#00FF66] text-xs mb-3">{">"} LABELS:</div>
+    <div className="border border-[var(--br-border)] p-3">
+      <div className="text-[var(--br-accent)] text-xs mb-3">{">"} LABELS:</div>
       <div className="flex flex-wrap gap-2 mb-3">
-        {labels.map((label) => (
+        {resolvedLabels.length === 0 && (
+          <span className="text-[var(--br-accent)]/30 text-xs">NO_LABELS</span>
+        )}
+        {resolvedLabels.map((label) => (
           <div key={label.id} className="flex items-center gap-1">
             <LabelBadge label={label} />
             <button
               onClick={() => onRemove(label.id)}
-              className="text-[#FF3333] text-xs hover:bg-[#FF3333] hover:text-black px-1 transition-colors"
+              className="text-[var(--br-danger)] text-xs hover:bg-[var(--br-danger)] hover:text-black px-1 transition-colors"
             >
               ×
             </button>
@@ -712,7 +1004,7 @@ function LabelManager({
             placeholder="Buscar etiqueta..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full h-8 px-2 bg-[#1A1A1A] border border-[#262626] text-white text-xs placeholder:text-[#00FF66]/30 focus:border-[#00FF66] focus:outline-none mb-2"
+            className="w-full h-8 px-2 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-text)] text-xs placeholder:text-[var(--br-accent)]/30 focus:border-[var(--br-accent)] focus:outline-none mb-2"
           />
           <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto">
             {filteredWorkspace.map((wl) => {
@@ -723,8 +1015,8 @@ function LabelManager({
                   onClick={() => onToggleWorkspaceLabel?.(wl.id)}
                   className={`flex items-center gap-1 px-2 py-1 text-xs border rounded transition-colors ${
                     isActive
-                      ? "border-[#00FF66] bg-[#00FF66]/10 text-[#00FF66]"
-                      : "border-[#262626] text-[#888] hover:border-[#3a3a3a]"
+                      ? "border-[var(--br-accent)] bg-[var(--br-accent)]/10 text-[var(--br-accent)]"
+                      : "border-[var(--br-border)] text-[var(--br-text-secondary)] hover:border-[var(--br-border-strong)]"
                   }`}
                 >
                   <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: wl.color }} />
@@ -736,55 +1028,273 @@ function LabelManager({
         </div>
       )}
 
-      {!showForm ? (
-        <button
-          onClick={() => setShowForm(true)}
-          className="w-full h-10 border border-dashed border-[#262626] text-[#00FF66]/50 text-xs hover:border-[#00FF66] hover:text-[#00FF66] transition-colors"
-        >
-          [ + ADD_LABEL ]
-        </button>
-      ) : (
-        <div className="space-y-3 border border-[#00FF66] p-3">
-          <input
-            type="text"
-            placeholder="LABEL_NAME..."
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            className="w-full h-10 px-3 bg-[#1A1A1A] border border-[#262626] text-white text-sm placeholder:text-[#00FF66]/30 focus:border-[#00FF66] focus:outline-none"
-          />
-          <div className="grid grid-cols-6 gap-2">
-            {LABEL_COLORS.map((c) => (
-              <button
-                key={c.value}
-                onClick={() => setSelectedColor(c.value)}
-                className={`w-full aspect-square border-2 transition-colors rounded ${
-                  selectedColor === c.value
-                    ? "border-[#00FF66] scale-110"
-                    : "border-transparent"
-                }`}
-                style={{ backgroundColor: c.value }}
-                title={c.name}
-              />
-            ))}
-          </div>
-          <div className="text-[#00FF66]/50 text-[10px]">{selectedColor}</div>
-          <div className="flex gap-2">
-            <button
-              onClick={handleAdd}
-              disabled={!newName.trim()}
-              className="flex-1 h-10 border border-[#00FF66] text-[#00FF66] text-xs hover:bg-[#00FF66] hover:text-black transition-colors disabled:opacity-50"
-            >
-              [ ADD ]
-            </button>
-            <button
-              onClick={() => setShowForm(false)}
-              className="h-10 px-3 border border-[#262626] text-[#00FF66]/50 text-xs hover:border-[#00FF66] transition-colors"
-            >
-              [ CANCEL ]
-            </button>
-          </div>
+      {(!workspaceLabels || workspaceLabels.length === 0) && (
+        <div className="text-[var(--br-accent)]/40 text-[10px]">
+          Nenhum label global. Crie labels no editor no topo do board.
         </div>
       )}
+    </div>
+  )
+}
+
+// ==================== COLOR PICKER ====================
+function ColorPicker({ value, onChange }: { value: string; onChange: (color: string) => void }) {
+  return (
+    <div className="grid grid-cols-6 gap-2">
+      {LABEL_COLORS.map((c) => (
+        <button
+          key={c.value}
+          onClick={() => onChange(c.value)}
+          className={`w-full aspect-square border-2 transition-colors rounded ${
+            value === c.value
+              ? "border-[var(--br-accent)] scale-110"
+              : "border-transparent"
+          }`}
+          style={{ backgroundColor: c.value }}
+          title={c.name}
+        />
+      ))}
+    </div>
+  )
+}
+
+// ==================== LABEL EDITOR (barra superior do board) ====================
+function LabelEditor({
+  labels,
+  onManage,
+  onAdd,
+}: {
+  labels: Label[]
+  onManage: (labelId?: string) => void
+  onAdd: () => void
+}) {
+  return (
+    <div className="flex items-center gap-2 mb-4 flex-wrap border border-[var(--br-border)] p-2">
+      <span className="text-[var(--br-accent)] text-xs whitespace-nowrap">{">"} LABELS:</span>
+      <div className="flex flex-wrap gap-1.5 flex-1 min-w-0 items-center">
+        {labels.length === 0 && (
+          <span className="text-[var(--br-accent)]/30 text-xs">NO_LABELS</span>
+        )}
+        {labels.map((label) => (
+          <div key={label.id} className="flex items-center gap-0.5">
+            <LabelBadge label={label} />
+            <button
+              onClick={() => onManage(label.id)}
+              title={`Editar ${label.name}`}
+              className="text-[var(--br-text-secondary)] hover:text-[var(--br-accent)] text-[10px] px-1 border border-transparent hover:border-[var(--br-accent)]/40 transition-colors"
+            >
+              ✎
+            </button>
+          </div>
+        ))}
+      </div>
+      <button
+        onClick={onAdd}
+        className="h-7 px-2 border border-dashed border-[var(--br-border)] text-[var(--br-accent)]/60 text-[10px] hover:border-[var(--br-accent)] hover:text-[var(--br-accent)] transition-colors whitespace-nowrap"
+      >
+        [ + NOVO ]
+      </button>
+      <button
+        onClick={() => onManage()}
+        className="h-7 px-2 border border-[var(--br-border)] text-[var(--br-accent)] text-[10px] hover:border-[var(--br-accent)] transition-colors whitespace-nowrap"
+      >
+        [ EDITAR ]
+      </button>
+    </div>
+  )
+}
+
+// ==================== LABEL EDITOR MODAL (gerenciar labels) ====================
+function LabelManagerModal({
+  labels,
+  initialLabelId,
+  onClose,
+  onChanged,
+}: {
+  labels: Label[]
+  initialLabelId?: string | null
+  onClose: () => void
+  onChanged: () => void
+}) {
+  const [newName, setNewName] = useState("")
+  const [newColor, setNewColor] = useState(LABEL_COLORS[3].value)
+  const [editingId, setEditingId] = useState<string | null>(initialLabelId || null)
+  const [editName, setEditName] = useState("")
+  const [editColor, setEditColor] = useState("")
+  const [busy, setBusy] = useState(false)
+
+  const startEdit = (label: Label) => {
+    setEditingId(label.id)
+    setEditName(label.name)
+    setEditColor(label.color)
+  }
+
+  const handleCreate = async () => {
+    if (!newName.trim() || busy) return
+    setBusy(true)
+    try {
+      const res = await fetch("/api/labels", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName.trim(), color: newColor }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        showToast(data.error || "ERRO: FALHA_AO_CRIAR_ETIQUETA", "error")
+        return
+      }
+      setNewName("")
+      setNewColor(LABEL_COLORS[3].value)
+      onChanged()
+    } catch {
+      showToast("ERRO: FALHA_AO_CRIAR_ETIQUETA", "error")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleUpdate = async () => {
+    if (!editingId || !editName.trim() || busy) return
+    setBusy(true)
+    try {
+      const res = await fetch("/api/labels", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: editingId, name: editName.trim(), color: editColor }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        showToast(data.error || "ERRO: FALHA_AO_ATUALIZAR_ETIQUETA", "error")
+        return
+      }
+      setEditingId(null)
+      onChanged()
+    } catch {
+      showToast("ERRO: FALHA_AO_ATUALIZAR_ETIQUETA", "error")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleDelete = async (labelId: string) => {
+    if (busy) return
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/labels?id=${labelId}`, { method: "DELETE" })
+      if (!res.ok) {
+        showToast("ERRO: FALHA_AO_DELETAR_ETIQUETA", "error")
+        return
+      }
+      if (editingId === labelId) setEditingId(null)
+      onChanged()
+    } catch {
+      showToast("ERRO: FALHA_AO_DELETAR_ETIQUETA", "error")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-[var(--br-overlay)] z-50 flex items-center justify-center p-4">
+      <div className="border-2 border-[var(--br-accent)] bg-[var(--br-bg)] w-full max-w-xl max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="border-b border-[var(--br-accent)] p-4 flex justify-between items-center">
+          <span className="text-[var(--br-accent)] font-bold">{">"} LABEL_EDITOR</span>
+          <button
+            onClick={onClose}
+            className="text-[var(--br-danger)] hover:bg-[var(--br-danger)] hover:text-black px-2 py-1 border border-[var(--br-danger)] transition-colors text-xs"
+          >
+            [ CLOSE ]
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className="border border-[var(--br-border)] p-3">
+            <div className="text-[var(--br-accent)] text-xs mb-3">{">"} NOVO_LABEL:</div>
+            <input
+              type="text"
+              placeholder="LABEL_NAME..."
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+              className="w-full h-10 px-3 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-text)] text-sm placeholder:text-[var(--br-accent)]/30 focus:border-[var(--br-accent)] focus:outline-none mb-3"
+            />
+            <ColorPicker value={newColor} onChange={setNewColor} />
+            <div className="text-[var(--br-accent)]/50 text-[10px] mt-1">{newColor}</div>
+            <button
+              onClick={handleCreate}
+              disabled={!newName.trim() || busy}
+              className="w-full h-10 border border-[var(--br-accent)] text-[var(--br-accent)] text-xs hover:bg-[var(--br-accent)] hover:text-black transition-colors disabled:opacity-50 mt-3"
+            >
+              [ ADD_LABEL ]
+            </button>
+          </div>
+
+          <div>
+            <div className="text-[var(--br-accent)] text-xs mb-3">{">"} LABELS ({labels.length}):</div>
+            {labels.length === 0 ? (
+              <div className="text-[var(--br-accent)]/30 text-xs">NO_LABELS</div>
+            ) : (
+              <div className="space-y-2">
+                {labels.map((label) => (
+                  <div key={label.id} className="border border-[var(--br-border)] p-2">
+                    {editingId === label.id ? (
+                      <div className="space-y-2">
+                        <input
+                          type="text"
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          onKeyDown={(e) => e.key === "Enter" && handleUpdate()}
+                          className="w-full h-10 px-3 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-text)] text-sm focus:border-[var(--br-accent)] focus:outline-none"
+                        />
+                        <ColorPicker value={editColor} onChange={setEditColor} />
+                        <div className="text-[var(--br-accent)]/50 text-[10px]">{editColor}</div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={handleUpdate}
+                            disabled={!editName.trim() || busy}
+                            className="flex-1 h-8 border border-[var(--br-accent)] text-[var(--br-accent)] text-xs hover:bg-[var(--br-accent)] hover:text-black transition-colors disabled:opacity-50"
+                          >
+                            [ SAVE ]
+                          </button>
+                          <button
+                            onClick={() => setEditingId(null)}
+                            className="h-8 px-3 border border-[var(--br-border)] text-[var(--br-accent)]/50 text-xs hover:border-[var(--br-accent)] transition-colors"
+                          >
+                            [ CANCEL ]
+                          </button>
+                          <button
+                            onClick={() => handleDelete(label.id)}
+                            className="h-8 px-3 border border-[var(--br-danger)]/60 text-[var(--br-danger)] text-xs hover:bg-[var(--br-danger)] hover:text-black transition-colors"
+                          >
+                            [ EXCLUIR ]
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <span className="w-4 h-4 rounded-sm flex-shrink-0" style={{ backgroundColor: label.color }} />
+                        <span className="text-[var(--br-text)] text-xs flex-1 min-w-0 truncate">{label.name}</span>
+                        <button
+                          onClick={() => startEdit(label)}
+                          className="h-7 px-2 border border-[var(--br-border)] text-[var(--br-accent)] text-[10px] hover:border-[var(--br-accent)] transition-colors"
+                        >
+                          [ EDITAR ]
+                        </button>
+                        <button
+                          onClick={() => handleDelete(label.id)}
+                          className="h-7 px-2 border border-[var(--br-danger)]/60 text-[var(--br-danger)] text-[10px] hover:bg-[var(--br-danger)] hover:text-black transition-colors"
+                        >
+                          [ EXCLUIR ]
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -861,18 +1371,18 @@ function MentionInput({
         onChange={handleChange}
         placeholder={placeholder}
         rows={3}
-        className="w-full px-3 py-2 bg-[#1A1A1A] border border-[#262626] text-white text-base placeholder:text-[#00FF66]/30 focus:border-[#00FF66] focus:outline-none resize-none"
+        className="w-full px-3 py-2 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-text)] text-base placeholder:text-[var(--br-accent)]/30 focus:border-[var(--br-accent)] focus:outline-none resize-none"
       />
       {showMentions && filteredTeam.length > 0 && (
-        <div className="absolute left-0 right-0 bottom-full mb-1 bg-black border border-[#00FF66] max-h-40 overflow-y-auto z-10">
+        <div className="absolute left-0 right-0 bottom-full mb-1 bg-[var(--br-bg)] border border-[var(--br-accent)] max-h-40 overflow-y-auto z-10">
           {filteredTeam.map((member) => (
             <button
               key={member.id}
               onClick={() => handleSelectMention(member)}
-              className="w-full px-3 py-2 text-left text-sm hover:bg-[#00FF66] hover:text-black transition-colors"
+              className="w-full px-3 py-2 text-left text-sm hover:bg-[var(--br-accent)] hover:text-black transition-colors"
             >
-              <span className="text-[#00FF66]">@{member.username}</span>
-              <span className="text-white ml-2">{member.name}</span>
+              <span className="text-[var(--br-accent)]">@{member.username}</span>
+              <span className="text-[var(--br-text)] ml-2">{member.name}</span>
             </button>
           ))}
         </div>
@@ -880,7 +1390,7 @@ function MentionInput({
       <button
         onClick={onSubmit}
         disabled={!value.trim()}
-        className="mt-2 w-full h-10 border border-[#00FF66] text-[#00FF66] text-xs hover:bg-[#00FF66] hover:text-black transition-colors disabled:opacity-50"
+        className="mt-2 w-full h-10 border border-[var(--br-accent)] text-[var(--br-accent)] text-xs hover:bg-[var(--br-accent)] hover:text-black transition-colors disabled:opacity-50"
       >
         [ POST_COMMENT ]
       </button>
@@ -889,39 +1399,200 @@ function MentionInput({
 }
 
 // ==================== SUBTASK ROW ====================
+const SUBTASK_STATUSES = ["BACKLOG", "FAZENDO", "ALTERAÇÕES", "APROVADO", "FEITO"]
+
+function SubtaskStatusSelect({
+  value,
+  onChange,
+  light,
+}: {
+  value: string
+  onChange: (status: string) => void
+  light?: boolean
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onClick={(e) => e.stopPropagation()}
+      title="Alterar status"
+      className={`h-7 px-1.5 border text-[10px] focus:outline-none cursor-pointer ${
+        light
+          ? "bg-[var(--br-bg-secondary)] border-[var(--br-border)] text-[var(--br-text)]"
+          : "bg-[var(--br-bg-secondary)] border-[var(--br-border)] text-[var(--br-accent)] hover:border-[var(--br-accent)]"
+      }`}
+    >
+      {SUBTASK_STATUSES.map((s) => (
+        <option key={s} value={s}>{s}</option>
+      ))}
+    </select>
+  )
+}
+
+function SubtaskAssigneeSelect({
+  value,
+  team,
+  onChange,
+  light,
+}: {
+  value: string | null
+  team: TeamMember[]
+  onChange: (assigneeId: string | null) => void
+  light?: boolean
+}) {
+  return (
+    <select
+      value={value || ""}
+      onChange={(e) => onChange(e.target.value || null)}
+      onClick={(e) => e.stopPropagation()}
+      title="Atribuir responsável"
+      className={`h-7 max-w-[120px] px-1.5 border text-[10px] focus:outline-none cursor-pointer ${
+        light
+          ? "bg-[var(--br-bg-secondary)] border-[var(--br-border)] text-[var(--br-text)]"
+          : "bg-[var(--br-bg-secondary)] border-[var(--br-border)] text-[var(--br-accent)]/70 hover:border-[var(--br-accent)]"
+      }`}
+    >
+      <option value="">— none —</option>
+      {team.map((m) => (
+        <option key={m.id} value={m.id}>@{m.username}</option>
+      ))}
+    </select>
+  )
+}
+
+function MemberAvatar({ name, light, url, size = 20 }: { name: string; light?: boolean; url?: string | null; size?: number }) {
+  const initials = (name || "?")
+    .split(/\s+/)
+    .map((p) => p[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase()
+  if (url) {
+    return (
+      <img
+        src={url}
+        alt={name}
+        title={name}
+        width={size}
+        height={size}
+        className="shrink-0 rounded-full object-cover"
+        style={{ width: size, height: size }}
+      />
+    )
+  }
+  return (
+    <span
+      title={name}
+      style={{ width: size, height: size, fontSize: Math.max(8, size / 2.5) }}
+      className={`shrink-0 rounded-full flex items-center justify-center font-bold ${
+        light ? "bg-[var(--br-bg-secondary)] text-[var(--br-text)]" : "bg-[var(--br-border)] text-[var(--br-accent)] border border-[var(--br-accent)]/40"
+      }`}
+    >
+      {initials}
+    </span>
+  )
+}
+
+// ==================== SUBTASK CARD (board) ====================
+function SubtaskCard({
+  subtask,
+  team,
+  onStatusChange,
+  onAssigneeChange,
+}: {
+  subtask: BoardSubtask
+  team: TeamMember[]
+  onStatusChange: (subtaskId: string, newStatus: string) => void
+  onAssigneeChange: (subtaskId: string, assigneeId: string | null) => void
+}) {
+  const assignee = team.find((m) => m.id === subtask.assigneeId)
+  const done = subtask.status === "APROVADO" || subtask.status === "FEITO"
+
+  return (
+    <div
+      onClick={(e) => e.stopPropagation()}
+      className={`rounded border p-2 mb-2 transition-colors ${
+        done ? "bg-[var(--br-card-done)] border-[var(--br-border-strong)]" : "bg-[var(--br-card)] border-[var(--br-border)] hover:border-[var(--br-border-strong)]"
+      }`}
+    >
+      <div className={`text-[11px] font-bold break-words ${done ? "text-[var(--br-text-secondary)] line-through" : "text-[var(--br-text)]"}`}>
+        {subtask.title}
+      </div>
+      <div className="flex items-center justify-between gap-1 mt-1.5">
+        <div className="flex items-center gap-1 min-w-0">
+          {assignee ? (
+            <MemberAvatar name={assignee.name} light url={assignee.avatarUrl} />
+          ) : (
+            <span className="w-5 h-5 shrink-0 rounded-full border border-dashed border-[var(--br-border-strong)] flex items-center justify-center text-[8px] text-[var(--br-border-strong)]" title="Sem responsável">?</span>
+          )}
+          <SubtaskAssigneeSelect
+            value={subtask.assigneeId}
+            team={team}
+            light
+            onChange={(assigneeId) => onAssigneeChange(subtask.id, assigneeId)}
+          />
+        </div>
+        <SubtaskStatusSelect
+          value={subtask.status}
+          light
+          onChange={(status) => onStatusChange(subtask.id, status)}
+        />
+      </div>
+    </div>
+  )
+}
+
 function SubtaskRow({
   subtask,
   onUpdateStatus,
   onAddComment,
   onUploadComplete,
+  onUpdateAssignee,
   currentUser,
   team,
+  highlight,
 }: {
   subtask: Subtask
   onUpdateStatus: (id: string, newStatus: string) => void
   onAddComment: (subtaskId: string, content: string) => void
   onUploadComplete?: () => void
+  onUpdateAssignee?: (subtaskId: string, assigneeId: string | null) => void
   currentUser: TeamMember
   team: TeamMember[]
+  highlight?: boolean
 }) {
   const [showComments, setShowComments] = useState(false)
   const [newComment, setNewComment] = useState("")
   const [liveTime, setLiveTime] = useState(subtask.timeSpent)
+  const [flashing, setFlashing] = useState(false)
+  const rowRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!highlight) return
+    setFlashing(true)
+    const scrollTimer = setTimeout(() => {
+      rowRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+    }, 150)
+    const flashTimer = setTimeout(() => setFlashing(false), 3000)
+    return () => {
+      clearTimeout(scrollTimer)
+      clearTimeout(flashTimer)
+    }
+  }, [highlight])
 
   useEffect(() => {
     if (!subtask.timerStartedAt) {
       setLiveTime(subtask.timeSpent)
       return
     }
+    const timerStartedAt = subtask.timerStartedAt
     const interval = setInterval(() => {
-      const elapsed = (Date.now() - new Date(subtask.timerStartedAt).getTime()) / 1000
+      const elapsed = (Date.now() - new Date(timerStartedAt).getTime()) / 1000
       setLiveTime(subtask.timeSpent + Math.round(elapsed))
     }, 1000)
     return () => clearInterval(interval)
   }, [subtask.timerStartedAt, subtask.timeSpent])
 
-  const STATUS_ORDER = ["BACKLOG", "FAZENDO", "ALTERAÇÕES", "APROVADO", "FEITO"]
-  const currentIndex = STATUS_ORDER.indexOf(subtask.status)
   const isTimerRunning = !!subtask.timerStartedAt
 
   const formatTime = (seconds: number) => {
@@ -941,14 +1612,14 @@ function SubtaskRow({
     const est = subtask.estimatedHours * 3600
     if (est === 0) return null
     const pct = Math.min((liveTime / est) * 100, 100)
-    const color = liveTime > est ? "#FF3333" : "#00FF66"
+    const color = liveTime > est ? "var(--br-danger)" : "var(--br-accent)"
     return (
       <div className="mt-2">
-        <div className="flex justify-between text-[10px] text-[#00FF66]/50 mb-1">
+        <div className="flex justify-between text-[10px] text-[var(--br-accent)]/50 mb-1">
           <span>Estimado: {subtask.estimatedHours}h</span>
           <span>Real: {formatTime(liveTime)}</span>
         </div>
-        <div className="w-full h-1.5 bg-[#262626]">
+        <div className="w-full h-1.5 bg-[var(--br-border)]">
           <div
             className="h-full transition-all"
             style={{ width: `${pct}%`, backgroundColor: color }}
@@ -959,34 +1630,40 @@ function SubtaskRow({
   }
 
   return (
-    <div className="border border-[#262626] bg-[#1A1A1A] p-3">
+    <div
+      ref={rowRef}
+      className={`border bg-[var(--br-bg-secondary)] p-3 transition-colors ${
+        flashing ? "border-[var(--br-accent)]" : "border-[var(--br-border)]"
+      }`}
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
-          <div className="text-white text-sm font-bold break-words">{subtask.title}</div>
+          <div className="text-[var(--br-text)] text-sm font-bold break-words">{subtask.title}</div>
           {subtask.description && (
-            <div className="text-white/60 text-xs mt-1 break-words">{subtask.description}</div>
+            <div className="text-[var(--br-text)]/60 text-xs mt-1 break-words">{subtask.description}</div>
           )}
           <div className="flex items-center gap-2 mt-2 flex-wrap">
-            <span className={`text-xs px-1.5 py-0.5 border ${isTimerRunning ? "border-[#00FF66] text-[#00FF66] animate-pulse" : "border-[#262626] text-[#00FF66]/70"}`}>
+            <span className={`text-xs px-1.5 py-0.5 border ${isTimerRunning ? "border-[var(--br-accent)] text-[var(--br-accent)] animate-pulse" : "border-[var(--br-border)] text-[var(--br-accent)]/70"}`}>
               {isTimerRunning ? "▶ CRONOMETRO" : subtask.status}
             </span>
-            <span className="text-xs text-[#00FF66]/70">{formatTime(liveTime)}</span>
+            <span className="text-xs text-[var(--br-accent)]/70">{formatTime(liveTime)}</span>
             {subtask.estimatedHours > 0 && (
-              <span className="text-xs text-[#00FF66]/50">EST: {subtask.estimatedHours}h</span>
+              <span className="text-xs text-[var(--br-accent)]/50">EST: {subtask.estimatedHours}h</span>
             )}
           </div>
           {compareBar()}
-          <div className="flex gap-1 mt-2 flex-wrap">
-            {currentIndex > 0 && (
-              <button onClick={() => onUpdateStatus(subtask.id, STATUS_ORDER[currentIndex - 1])}
-                className="h-6 px-1.5 border border-[#262626] text-[#00FF66] text-[10px] hover:border-[#00FF66] transition-colors">←</button>
-            )}
-            {currentIndex < STATUS_ORDER.length - 1 && (
-              <button onClick={() => onUpdateStatus(subtask.id, STATUS_ORDER[currentIndex + 1])}
-                className="h-6 px-1.5 border border-[#262626] text-[#00FF66] text-[10px] hover:border-[#00FF66] transition-colors">→</button>
-            )}
+          <div className="flex gap-1 mt-2 flex-wrap items-center">
+            <SubtaskStatusSelect value={subtask.status} onChange={(s) => onUpdateStatus(subtask.id, s)} />
+            {subtask.assigneeId || team.find((m) => m.id === subtask.assigneeId) ? (
+              <MemberAvatar name={team.find((m) => m.id === subtask.assigneeId)?.name || "?"} url={team.find((m) => m.id === subtask.assigneeId)?.avatarUrl} />
+            ) : null}
+            <SubtaskAssigneeSelect
+              value={subtask.assigneeId}
+              team={team}
+              onChange={(assigneeId) => onUpdateAssignee?.(subtask.id, assigneeId)}
+            />
             <button onClick={() => setShowComments(!showComments)}
-              className="h-6 px-1.5 border border-[#262626] text-[#00FF66]/50 text-[10px] hover:border-[#00FF66] transition-colors">
+              className="h-7 px-1.5 border border-[var(--br-border)] text-[var(--br-accent)]/50 text-[10px] hover:border-[var(--br-accent)] transition-colors">
               [{subtask.comments.length}]
             </button>
           </div>
@@ -994,22 +1671,25 @@ function SubtaskRow({
       </div>
 
       {showComments && (
-        <div className="mt-3 border-t border-[#262626] pt-3 space-y-2">
+        <div className="mt-3 border-t border-[var(--br-border)] pt-3 space-y-2">
           {subtask.comments.length === 0 && (
-            <div className="text-[#00FF66]/50 text-xs">NO_COMMENTS</div>
+            <div className="text-[var(--br-accent)]/50 text-xs">NO_COMMENTS</div>
           )}
           {subtask.comments.map((c) => (
-            <div key={c.id} className="border border-[#262626] bg-black p-2">
-              <div className="text-[#00FF66] text-[10px] font-bold">{c.authorName}</div>
-              <div className="text-white text-xs mt-1">{c.content}</div>
+            <div key={c.id} className="border border-[var(--br-border)] bg-[var(--br-bg)] p-2">
+              <div className="flex items-center gap-2">
+                <MemberAvatar name={team.find((m) => m.username === c.authorName || m.name === c.authorName)?.name || c.authorName} url={team.find((m) => m.username === c.authorName || m.name === c.authorName)?.avatarUrl} size={16} />
+                <div className="text-[var(--br-accent)] text-[10px] font-bold">{c.authorName}</div>
+              </div>
+              <div className="text-[var(--br-text)] text-xs mt-1">{c.content}</div>
             </div>
           ))}
           {subtask.files.length > 0 && (
             <div className="space-y-1">
-              <div className="text-[#00FF66]/50 text-[10px]">ARQUIVOS:</div>
+              <div className="text-[var(--br-accent)]/50 text-[10px]">ARQUIVOS:</div>
               {subtask.files.map((f) => (
                 <a key={f.id} href={f.url} target="_blank" rel="noopener noreferrer"
-                  className="block border border-[#262626] bg-black p-1.5 text-[#00FF66] text-[10px] hover:underline">
+                  className="block border border-[var(--br-border)] bg-[var(--br-bg)] p-1.5 text-[var(--br-accent)] text-[10px] hover:underline">
                   {f.name} ({(f.size / 1024).toFixed(1)} KB)
                 </a>
               ))}
@@ -1017,8 +1697,8 @@ function SubtaskRow({
           )}
           <MentionInput value={newComment} onChange={setNewComment}
             onSubmit={handleAddComment} team={team} placeholder="Comentário (use @ para mencionar)..." />
-          <label className="flex items-center gap-2 cursor-pointer p-1.5 border border-dashed border-[#262626] hover:border-[#00FF66] transition-colors">
-            <span className="text-[#00FF66]/50 text-[10px]">[ UPLOAD_FILE ]</span>
+          <label className="flex items-center gap-2 cursor-pointer p-1.5 border border-dashed border-[var(--br-border)] hover:border-[var(--br-accent)] transition-colors">
+            <span className="text-[var(--br-accent)]/50 text-[10px]">[ UPLOAD_FILE ]</span>
             <input type="file" className="hidden"
               onChange={async (e) => {
                 const file = e.target.files?.[0]
@@ -1038,11 +1718,115 @@ function SubtaskRow({
   )
 }
 
+// ==================== ACTIVITY FEED ====================
+interface TaskActivity {
+  id: string
+  taskId: string
+  userId: string | null
+  action: string
+  oldValue: Record<string, unknown> | null
+  newValue: Record<string, unknown> | null
+  createdAt: string
+  userName: string | null
+  userAvatarUrl: string | null
+}
+
+function describeActivity(a: TaskActivity): string {
+  const user = a.userName || "Sistema"
+  const nv = a.newValue || {}
+  const ov = a.oldValue || {}
+  const subtaskTitle = nv.title || ov.title ? `"${(nv.title || ov.title) as string}"` : ""
+  switch (a.action) {
+    case "created":
+      return `${user} criou a tarefa`
+    case "title":
+      return `${user} alterou o título de "${String(ov.title)}" para "${String(nv.title)}"`
+    case "description":
+      return `${user} alterou a descrição`
+    case "status":
+      return nv.isComplete ? `${user} concluiu a tarefa` : `${user} reabriu a tarefa`
+    case "archive":
+      return nv.isClosed ? `${user} arquivou a tarefa` : `${user} restaurou a tarefa`
+    case "move":
+      return `${user} moveu a tarefa de "${String(ov.column)}" para "${String(nv.column)}"`
+    case "assignee":
+      return nv.name
+        ? `${user} atribuiu a tarefa a ${String(nv.name)}`
+        : `${user} removeu o responsável da tarefa`
+    case "cover":
+      return nv.url ? `${user} adicionou uma capa` : `${user} removeu a capa`
+    case "comment": {
+      const content = String(nv.content || "")
+      return `${user} comentou: "${content.length > 60 ? content.slice(0, 60) + "..." : content}"`
+    }
+    case "subtask_created":
+      return `${user} criou a subtarefa ${subtaskTitle}`
+    case "subtask_status":
+      return `${user} alterou o status da subtarefa ${subtaskTitle} de "${String(ov.status)}" para "${String(nv.status)}"`
+    case "subtask_assignee":
+      return nv.name
+        ? `${user} atribuiu a subtarefa ${subtaskTitle} a ${String(nv.name)}`
+        : `${user} removeu o responsável da subtarefa ${subtaskTitle}`
+    default:
+      return `${user} executou a ação "${a.action}"`
+  }
+}
+
+function ActivityFeed({ taskId }: { taskId: string }) {
+  const [activities, setActivities] = useState<TaskActivity[] | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/tasks/${taskId}/activities`)
+        const data = await res.json().catch(() => ({}))
+        if (!cancelled) setActivities(data.activities || [])
+      } catch {
+        if (!cancelled) setActivities([])
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [taskId])
+
+  if (activities === null) {
+    return <div className="text-[var(--br-accent)]/50 text-xs">CARREGANDO_ATIVIDADES...</div>
+  }
+
+  if (activities.length === 0) {
+    return <div className="text-[var(--br-accent)]/50 text-xs">NO_ACTIVITIES</div>
+  }
+
+  return (
+    <div className="space-y-0">
+      {activities.map((a, i) => (
+        <div key={a.id} className="flex gap-3 pb-4 relative">
+          {i < activities.length - 1 && (
+            <div className="absolute left-[10px] top-8 bottom-0 w-px bg-[var(--br-border)]" />
+          )}
+          <MemberAvatar name={a.userName || "?"} url={a.userAvatarUrl} size={20} />
+          <div className="flex-1 min-w-0">
+            <div className="text-xs text-[var(--br-text)] break-words">{describeActivity(a)}</div>
+            <div className="text-[10px] text-[var(--br-text-secondary)] mt-0.5">
+              {new Date(a.createdAt).toLocaleString("pt-BR")}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ==================== TASK EDIT MODAL ====================
 function TaskEditModal({
   task,
   team,
   currentUser,
+  workspaceLabels,
+  focusSubtasks,
+  focusSubtaskId,
   onClose,
   onSave,
   onAddComment,
@@ -1052,6 +1836,9 @@ function TaskEditModal({
   task: Task
   team: TeamMember[]
   currentUser: TeamMember
+  workspaceLabels: Label[]
+  focusSubtasks?: boolean
+  focusSubtaskId?: string | null
   onClose: () => void
   onSave: (updates: Partial<Task>) => void
   onAddComment: (content: string, mentions: string[]) => void
@@ -1061,6 +1848,7 @@ function TaskEditModal({
   const [title, setTitle] = useState(task.title)
   const [description, setDescription] = useState(task.description)
   const [assignees, setAssignees] = useState<string[]>(task.assignees)
+  const [taskAssigneeId, setTaskAssigneeId] = useState<string | null>(task.assigneeId || null)
   const [labels, setLabels] = useState<Label[]>(task.labels)
   const [subtasks, setSubtasks] = useState<Subtask[]>([])
   const [newComment, setNewComment] = useState("")
@@ -1070,20 +1858,80 @@ function TaskEditModal({
   const [newSubtaskTitle, setNewSubtaskTitle] = useState("")
   const [newSubtaskEstHours, setNewSubtaskEstHours] = useState("")
   const [improving, setImproving] = useState(false)
-  const [workspaceLabels, setWorkspaceLabels] = useState<Label[]>([])
   const [confirmArchive, setConfirmArchive] = useState(false)
   const [archiving, setArchiving] = useState(false)
+  const [subtasksCollapsed, setSubtasksCollapsed] = useState(false)
+  const [focusFlash, setFocusFlash] = useState(false)
+  const [activeTab, setActiveTab] = useState<"details" | "activity">("details")
+  const subtasksSectionRef = useRef<HTMLDivElement | null>(null)
+  const subtasksScrolledRef = useRef(false)
+
+  const [descEditing, setDescEditing] = useState(false)
+  const [descSaveState, setDescSaveState] = useState<"idle" | "saving" | "saved">("idle")
+  const descTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const descStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const descDirtyRef = useRef(false)
+
+  const persistDescription = async () => {
+    if (descTimerRef.current) {
+      clearTimeout(descTimerRef.current)
+      descTimerRef.current = null
+    }
+    if (!descDirtyRef.current) return
+    descDirtyRef.current = false
+    setDescSaveState("saving")
+    try {
+      await onSave({ description })
+      setDescSaveState("saved")
+      if (descStatusTimerRef.current) clearTimeout(descStatusTimerRef.current)
+      descStatusTimerRef.current = setTimeout(() => setDescSaveState("idle"), 2000)
+    } catch {
+      descDirtyRef.current = true
+      setDescSaveState("idle")
+    }
+  }
+
+  const scheduleDescriptionSave = () => {
+    descDirtyRef.current = true
+    setDescSaveState("saving")
+    if (descTimerRef.current) clearTimeout(descTimerRef.current)
+    descTimerRef.current = setTimeout(persistDescription, 2000)
+  }
+
+  const handleDescChange = (value: string) => {
+    setDescription(value)
+    scheduleDescriptionSave()
+  }
+
+  useEffect(() => {
+    return () => {
+      if (descTimerRef.current) clearTimeout(descTimerRef.current)
+      if (descStatusTimerRef.current) clearTimeout(descStatusTimerRef.current)
+    }
+  }, [])
 
   useEffect(() => {
     fetch(`/api/subtasks?taskId=${task.id}`)
       .then((r) => r.json())
       .then((d) => setSubtasks(d.subtasks || []))
       .catch(() => {})
-    fetch("/api/workspace-labels")
-      .then((r) => r.json())
-      .then((d) => setWorkspaceLabels(d.labels || []))
-      .catch(() => {})
   }, [task.id])
+
+  // "Ver subtarefas": expande a seção e rola até ela, com destaque temporário
+  useEffect(() => {
+    if (!focusSubtasks || subtasksScrolledRef.current || subtasks.length === 0) return
+    subtasksScrolledRef.current = true
+    setSubtasksCollapsed(false)
+    const scrollTimer = setTimeout(() => {
+      subtasksSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+      setFocusFlash(true)
+    }, 150)
+    const flashTimer = setTimeout(() => setFocusFlash(false), 2000)
+    return () => {
+      clearTimeout(scrollTimer)
+      clearTimeout(flashTimer)
+    }
+  }, [focusSubtasks, subtasks.length])
 
   const totalEstimatedHours = subtasks.reduce((s, st) => s + (st.estimatedHours || 0), 0)
   const totalTimeSpent = subtasks.reduce((s, st) => s + st.timeSpent, 0)
@@ -1163,6 +2011,30 @@ function TaskEditModal({
     }
   }
 
+  const handleTaskAssigneeChange = async (assigneeId: string | null) => {
+    setTaskAssigneeId(assigneeId)
+    try {
+      await onSave({ assigneeId })
+    } catch {
+      setTaskAssigneeId(task.assigneeId || null)
+    }
+  }
+
+  const handleSubtaskAssigneeUpdate = async (subtaskId: string, assigneeId: string | null) => {
+    try {
+      await fetch("/api/subtasks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: subtaskId, assigneeId }),
+      })
+      const res = await fetch(`/api/subtasks?taskId=${task.id}`)
+      const d = await res.json()
+      setSubtasks(d.subtasks || [])
+    } catch (err) {
+      console.error("Error updating subtask assignee:", err)
+    }
+  }
+
   const handleSubtaskComment = async (subtaskId: string, content: string) => {
     try {
       await fetch("/api/comments", {
@@ -1193,7 +2065,10 @@ function TaskEditModal({
         body: JSON.stringify({ description, cardTitle: task.title }),
       })
       const { data } = await res.json()
-      if (data?.improved) setDescription(data.improved)
+      if (data?.improved) {
+        setDescription(data.improved)
+        scheduleDescriptionSave()
+      }
     } catch (e) {
       console.error(e)
     } finally {
@@ -1207,64 +2082,152 @@ function TaskEditModal({
     return `${h}h ${m}m`
   }
 
+  const [copied, setCopied] = useState(false)
+  const copyLink = async () => {
+    const url = `${window.location.origin}/board/${DEFAULT_WORKSPACE_ID}/task/${task.id}`
+    try {
+      await navigator.clipboard.writeText(url)
+    } catch {
+      const textarea = document.createElement("textarea")
+      textarea.value = url
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand("copy")
+      document.body.removeChild(textarea)
+    }
+    setCopied(true)
+    showToast("LINK_COPIADO", "success")
+    setTimeout(() => setCopied(false), 2000)
+  }
+
   return (
-    <div className="fixed inset-0 bg-black z-50 overflow-y-auto">
+    <div className="fixed inset-0 bg-[var(--br-bg)] z-50 overflow-y-auto">
       <div className="min-h-screen p-4">
-        <div className="border-2 border-[#00FF66] bg-black max-w-3xl mx-auto">
-          <div className="border-b border-[#00FF66] p-4 flex justify-between items-center sticky top-0 bg-black z-10">
-            <span className="text-[#00FF66] font-bold">{">"} EDIT_TASK</span>
+        <div className="border-2 border-[var(--br-accent)] bg-[var(--br-bg)] max-w-3xl mx-auto">
+          <div className="border-b border-[var(--br-accent)] p-4 flex justify-between items-center sticky top-0 bg-[var(--br-bg)] z-10">
+            <span className="text-[var(--br-accent)] font-bold">{">"} EDIT_TASK</span>
             <div className="flex gap-2">
               <button
+                onClick={copyLink}
+                title="Copiar link de compartilhamento da tarefa"
+                className="text-[var(--br-accent)]/80 hover:bg-[var(--br-accent)] hover:text-black px-3 py-1 border border-[var(--br-accent)]/50 hover:border-[var(--br-accent)] transition-colors text-xs"
+              >
+                [ {copied ? "COPIADO ✓" : "COPIAR_LINK"} ]
+              </button>
+              <button
                 onClick={handleSave}
-                className="text-[#00FF66] hover:bg-[#00FF66] hover:text-black px-3 py-1 border border-[#00FF66] transition-colors text-xs"
+                className="text-[var(--br-accent)] hover:bg-[var(--br-accent)] hover:text-black px-3 py-1 border border-[var(--br-accent)] transition-colors text-xs"
               >
                 [ SAVE ]
               </button>
               <button
                 onClick={onClose}
-                className="text-[#FF3333] hover:bg-[#FF3333] hover:text-black px-2 py-1 border border-[#FF3333] transition-colors text-xs"
+                className="text-[var(--br-danger)] hover:bg-[var(--br-danger)] hover:text-black px-2 py-1 border border-[var(--br-danger)] transition-colors text-xs"
               >
                 [ CLOSE ]
               </button>
             </div>
           </div>
 
+          <div className="flex gap-1 px-4 pt-3 border-b border-[var(--br-border)]">
+            <button
+              onClick={() => setActiveTab("details")}
+              className={`h-8 px-3 text-xs border transition-colors ${
+                activeTab === "details"
+                  ? "border-[var(--br-accent)] bg-[var(--br-accent)] text-black font-bold"
+                  : "border-[var(--br-border)] text-[var(--br-text-secondary)] hover:border-[var(--br-accent)]"
+              }`}
+            >
+              [ DETALHES ]
+            </button>
+            <button
+              onClick={() => setActiveTab("activity")}
+              className={`h-8 px-3 text-xs border transition-colors ${
+                activeTab === "activity"
+                  ? "border-[var(--br-accent)] bg-[var(--br-accent)] text-black font-bold"
+                  : "border-[var(--br-border)] text-[var(--br-text-secondary)] hover:border-[var(--br-accent)]"
+              }`}
+            >
+              [ ATIVIDADE ]
+            </button>
+          </div>
+
+          {activeTab === "activity" ? (
+            <div className="p-4">
+              <div className="text-[var(--br-accent)] text-xs mb-3">{">"} HISTORICO_DE_ATIVIDADES:</div>
+              <div className="max-h-[55vh] overflow-y-auto pr-1">
+                <ActivityFeed taskId={task.id} />
+              </div>
+            </div>
+          ) : (
           <div className="p-4 space-y-6">
             <div>
-              <div className="text-[#00FF66] text-xs mb-2">{">"} TITLE:</div>
+              <div className="text-[var(--br-accent)] text-xs mb-2">{">"} TITLE:</div>
               <input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="w-full h-12 px-3 bg-[#1A1A1A] border border-[#262626] text-white text-base focus:border-[#00FF66] focus:outline-none"
+                className="w-full h-12 px-3 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-text)] text-base focus:border-[var(--br-accent)] focus:outline-none"
               />
             </div>
 
             <div>
               <div className="flex items-center justify-between mb-2">
-                <div className="text-[#00FF66] text-xs">{">"} DESCRIPTION:</div>
-                <button
-                  onClick={improveDescription}
-                  disabled={improving || !description.trim()}
-                  className="flex items-center gap-1 px-2 py-1 text-[10px] border border-[#2a2a2a] rounded hover:border-[#00ff88] hover:text-[#00ff88] text-[#888] transition-all disabled:opacity-40"
-                >
-                  {improving ? (
-                    <span className="animate-pulse">✦ melhorando...</span>
-                  ) : (
-                    <>✦ melhorar com IA</>
+                <div className="flex items-center gap-2">
+                  <div className="text-[var(--br-accent)] text-xs">{">"} DESCRIPTION:</div>
+                  {descSaveState === "saving" && (
+                    <span className="text-[10px] text-[var(--br-warn)] animate-pulse">SALVANDO...</span>
                   )}
-                </button>
+                  {descSaveState === "saved" && (
+                    <span className="text-[10px] text-[var(--br-accent)]">✓ SALVO</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={improveDescription}
+                    disabled={improving || !description.trim()}
+                    className="flex items-center gap-1 px-2 py-1 text-[10px] border border-[var(--br-border)] rounded hover:border-[var(--br-accent-strong)] hover:text-[var(--br-accent-strong)] text-[var(--br-text-secondary)] transition-all disabled:opacity-40"
+                  >
+                    {improving ? (
+                      <span className="animate-pulse">✦ melhorando...</span>
+                    ) : (
+                      <>✦ melhorar com IA</>
+                    )}
+                  </button>
+                  {!descEditing && (
+                    <button
+                      onClick={() => setDescEditing(true)}
+                      title="Editar descrição"
+                      className="w-6 h-6 flex items-center justify-center border border-[var(--br-border)] text-[var(--br-accent)]/60 hover:border-[var(--br-accent)] hover:text-[var(--br-accent)] transition-colors text-xs"
+                    >
+                      ✎
+                    </button>
+                  )}
+                </div>
               </div>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={4}
-                className="w-full px-3 py-2 bg-[#1A1A1A] border border-[#262626] text-white text-base focus:border-[#00FF66] focus:outline-none resize-none"
-              />
+              {descEditing ? (
+                <textarea
+                  value={description}
+                  onChange={(e) => handleDescChange(e.target.value)}
+                  onBlur={persistDescription}
+                  autoFocus
+                  rows={10}
+                  className="w-4/5 h-[200px] px-3 py-2 bg-[var(--br-bg-secondary)] border border-[var(--br-accent)] text-[var(--br-text)] text-base focus:outline-none resize-y transition-all duration-200"
+                />
+              ) : (
+                <div
+                  onDoubleClick={() => setDescEditing(true)}
+                  className="w-full min-h-[6rem] max-h-[12rem] overflow-y-auto px-3 py-2 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-text)] text-base whitespace-pre-wrap break-words cursor-text hover:border-[var(--br-accent)]/50 transition-colors"
+                >
+                  {description ? description : (
+                    <span className="text-[var(--br-accent)]/30">NO_DESCRIPTION</span>
+                  )}
+                </div>
+              )}
             </div>
 
             <div>
-              <div className="text-[#00FF66] text-xs mb-2">{">"} ASSIGNEES:</div>
+              <div className="text-[var(--br-accent)] text-xs mb-2">{">"} ASSIGNEES:</div>
               <div className="flex flex-wrap gap-2">
                 {team.map((member) => (
                   <button
@@ -1272,8 +2235,8 @@ function TaskEditModal({
                     onClick={() => toggleAssignee(member.name)}
                     className={`px-3 py-2 border text-xs transition-colors ${
                       assignees.includes(member.name)
-                        ? "border-[#00FF66] bg-[#00FF66] text-black"
-                        : "border-[#262626] text-white hover:border-[#00FF66]"
+                        ? "border-[var(--br-accent)] bg-[var(--br-accent)] text-black"
+                        : "border-[var(--br-border)] text-[var(--br-text)] hover:border-[var(--br-accent)]"
                     }`}
                   >
                     @{member.username}
@@ -1282,11 +2245,34 @@ function TaskEditModal({
               </div>
             </div>
 
+            <div>
+              <div className="text-[var(--br-accent)] text-xs mb-2">{">"} RESPONSAVEL:</div>
+              <div className="flex items-center gap-2">
+                <MemberAvatar
+                  name={team.find((m) => m.id === taskAssigneeId)?.name || "—"}
+                  url={team.find((m) => m.id === taskAssigneeId)?.avatarUrl || null}
+                  size={24}
+                />
+                <SubtaskAssigneeSelect
+                  value={taskAssigneeId}
+                  team={team}
+                  onChange={handleTaskAssigneeChange}
+                />
+                {taskAssigneeId && (
+                  <button
+                    onClick={() => handleTaskAssigneeChange(null)}
+                    className="px-2 py-1 border border-[var(--br-border)] text-[var(--br-text-secondary)] text-[10px] hover:border-[var(--br-danger)] hover:text-[var(--br-danger)] transition-colors"
+                    title="Remover responsável"
+                  >
+                    [ REMOVER ]
+                  </button>
+                )}
+              </div>
+            </div>
+
             <LabelManager
               labels={labels}
-              onAdd={(label) => setLabels([...labels, label])}
               onRemove={(id) => setLabels(labels.filter((l) => l.id !== id))}
-              taskId={task.id}
               workspaceLabels={workspaceLabels}
               onToggleWorkspaceLabel={async (labelId) => {
                 await fetch("/api/workspace-labels/toggle", {
@@ -1305,23 +2291,34 @@ function TaskEditModal({
               }}
             />
 
-            <div>
+            <div
+              ref={subtasksSectionRef}
+              className={`transition-colors ${focusFlash ? "border border-[var(--br-accent)] p-2" : ""}`}
+            >
               <div className="flex items-center justify-between mb-2">
-                <div className="text-[#00FF66] text-xs">{">"} SUBTASKS:</div>
-                <div className="text-[#00FF66]/50 text-[10px]">
+                <button
+                  onClick={() => setSubtasksCollapsed(!subtasksCollapsed)}
+                  className="text-[var(--br-accent)] text-xs hover:text-[var(--br-accent)]/70 transition-colors"
+                  title={subtasksCollapsed ? "Expandir subtarefas" : "Recolher subtarefas"}
+                >
+                  {">"} SUBTASKS: {subtasksCollapsed ? "[ ▼ ]" : "[ ▲ ]"}
+                </button>
+                <div className="text-[var(--br-accent)]/50 text-[10px]">
                   EST: {totalEstimatedHours}h | REAL: {formatTime(totalTimeSpent)}
                 </div>
               </div>
 
+              {!subtasksCollapsed && (
+                <>
               {totalEstimatedHours > 0 && (
                 <div className="mb-3">
-                  <div className="flex justify-between text-[10px] text-[#00FF66]/50 mb-1">
-                    <span>Total Estimado: {totalEstimatedHours}h</span>
-                    <span>Total Real: {formatTime(totalTimeSpent)}</span>
+                  <div className="flex justify-between text-[10px] text-[var(--br-accent)]/50 mb-1">
+                    <span>Estimado total: {totalEstimatedHours}h</span>
+                    <span>Realizado total: {formatTime(totalTimeSpent)}</span>
                   </div>
-                  <div className="w-full h-1.5 bg-[#262626]">
+                  <div className="w-full h-1.5 bg-[var(--br-border)]">
                     <div
-                      className="h-full bg-[#00FF66] transition-all"
+                      className="h-full bg-[var(--br-accent)] transition-all"
                       style={{ width: `${Math.min((totalTimeSpent / (totalEstimatedHours * 3600)) * 100, 100)}%` }}
                     />
                   </div>
@@ -1330,7 +2327,7 @@ function TaskEditModal({
 
               <div className="space-y-2 mb-3">
                 {subtasks.length === 0 && (
-                  <div className="text-[#00FF66]/50 text-xs">NO_SUBTASKS</div>
+                  <div className="text-[var(--br-accent)]/50 text-xs">NO_SUBTASKS</div>
                 )}
                 {subtasks.map((st) => (
                   <SubtaskRow
@@ -1339,58 +2336,62 @@ function TaskEditModal({
                     onUpdateStatus={handleSubtaskStatusUpdate}
                     onAddComment={handleSubtaskComment}
                     onUploadComplete={onUploadComplete}
+                    onUpdateAssignee={handleSubtaskAssigneeUpdate}
                     currentUser={currentUser}
                     team={team}
+                    highlight={focusSubtaskId === st.id}
                   />
                 ))}
               </div>
 
               {showNewSubtask ? (
-                <div className="border border-[#00FF66] p-3 space-y-2">
+                <div className="border border-[var(--br-accent)] p-3 space-y-2">
                   <input value={newSubtaskTitle} onChange={(e) => setNewSubtaskTitle(e.target.value)}
                     placeholder="SUBTASK_TITLE..."
-                    className="w-full h-10 px-3 bg-[#1A1A1A] border border-[#262626] text-white text-sm placeholder:text-[#00FF66]/30 focus:border-[#00FF66] focus:outline-none" />
+                    className="w-full h-10 px-3 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-text)] text-sm placeholder:text-[var(--br-accent)]/30 focus:border-[var(--br-accent)] focus:outline-none" />
                   <input value={newSubtaskEstHours} onChange={(e) => setNewSubtaskEstHours(e.target.value)}
                     placeholder="ESTIMATED_HOURS (ex: 2.5)"
                     type="number" step="0.5" min="0"
-                    className="w-full h-10 px-3 bg-[#1A1A1A] border border-[#262626] text-white text-sm placeholder:text-[#00FF66]/30 focus:border-[#00FF66] focus:outline-none" />
+                    className="w-full h-10 px-3 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-text)] text-sm placeholder:text-[var(--br-accent)]/30 focus:border-[var(--br-accent)] focus:outline-none" />
                   <div className="flex gap-2">
                     <button onClick={handleAddSubtask} disabled={!newSubtaskTitle.trim()}
-                      className="flex-1 h-10 border border-[#00FF66] text-[#00FF66] text-xs hover:bg-[#00FF66] hover:text-black transition-colors disabled:opacity-50">[ ADD ]</button>
+                      className="flex-1 h-10 border border-[var(--br-accent)] text-[var(--br-accent)] text-xs hover:bg-[var(--br-accent)] hover:text-black transition-colors disabled:opacity-50">[ ADD ]</button>
                     <button onClick={() => setShowNewSubtask(false)}
-                      className="h-10 px-3 border border-[#262626] text-[#00FF66]/50 text-xs hover:border-[#00FF66] transition-colors">[ CANCEL ]</button>
+                      className="h-10 px-3 border border-[var(--br-border)] text-[var(--br-accent)]/50 text-xs hover:border-[var(--br-accent)] transition-colors">[ CANCEL ]</button>
                   </div>
                 </div>
               ) : (
                 <button onClick={() => setShowNewSubtask(true)}
-                  className="w-full h-10 border border-dashed border-[#262626] text-[#00FF66]/50 text-xs hover:border-[#00FF66] hover:text-[#00FF66] transition-colors">
+                  className="w-full h-10 border border-dashed border-[var(--br-border)] text-[var(--br-accent)]/50 text-xs hover:border-[var(--br-accent)] hover:text-[var(--br-accent)] transition-colors">
                   [ + ADD_SUBTASK ]
                 </button>
+              )}
+                </>
               )}
             </div>
 
             <div>
-              <div className="text-[#00FF66] text-xs mb-2">{">"} FILES:</div>
+              <div className="text-[var(--br-accent)] text-xs mb-2">{">"} FILES:</div>
               <div className="space-y-2 mb-3">
                 {task.files.length === 0 ? (
-                  <div className="text-[#00FF66]/50 text-xs">NO_FILES</div>
+                  <div className="text-[var(--br-accent)]/50 text-xs">NO_FILES</div>
                 ) : (
                   task.files.map((file) => (
                     <div
                       key={file.id}
-                      className="flex items-center justify-between border border-[#262626] bg-[#1A1A1A] p-2"
+                      className="flex items-center justify-between border border-[var(--br-border)] bg-[var(--br-bg-secondary)] p-2"
                     >
                       <a href={file.url} target="_blank" rel="noopener noreferrer"
-                        className="text-[#00FF66] text-xs hover:underline truncate flex-1">{file.name}</a>
-                      <span className="text-[#00FF66]/50 text-xs ml-2 shrink-0">
+                        className="text-[var(--br-accent)] text-xs hover:underline truncate flex-1">{file.name}</a>
+                      <span className="text-[var(--br-accent)]/50 text-xs ml-2 shrink-0">
                         {(file.size / 1024).toFixed(1)} KB
                       </span>
                     </div>
                   ))
                 )}
               </div>
-              <label className="flex items-center gap-2 cursor-pointer border border-dashed border-[#262626] hover:border-[#00FF66] p-3 transition-colors">
-                <span className="text-[#00FF66] text-xs">[ UPLOAD_FILE ]</span>
+              <label className="flex items-center gap-2 cursor-pointer border border-dashed border-[var(--br-border)] hover:border-[var(--br-accent)] p-3 transition-colors">
+                <span className="text-[var(--br-accent)] text-xs">[ UPLOAD_FILE ]</span>
                 <input type="file" className="hidden"
                   onChange={async (e) => {
                     const file = e.target.files?.[0]
@@ -1406,17 +2407,18 @@ function TaskEditModal({
               </label>
             </div>
 
-            <div className="border border-[#262626] p-3">
-              <div className="text-[#00FF66] text-xs mb-3">{">"} COMMENT_HISTORY:</div>
+            <div className="border border-[var(--br-border)] p-3">
+              <div className="text-[var(--br-accent)] text-xs mb-3">{">"} COMMENT_HISTORY:</div>
               <div className="space-y-3 mb-4 max-h-60 overflow-y-auto">
                 {task.comments.length === 0 ? (
-                  <div className="text-[#00FF66]/50 text-xs">NO_COMMENTS</div>
+                  <div className="text-[var(--br-accent)]/50 text-xs">NO_COMMENTS</div>
                 ) : (
                   task.comments.map((comment) => (
-                    <div key={comment.id} className="border border-[#262626] bg-[#1A1A1A] p-3">
+                    <div key={comment.id} className="border border-[var(--br-border)] bg-[var(--br-bg-secondary)] p-3">
                       <div className="flex items-center gap-2 mb-2">
-                        <span className="text-[#00FF66] text-xs font-bold">{comment.authorName}</span>
-                        <span className="text-[#00FF66]/50 text-xs">
+                        <MemberAvatar name={team.find((m) => m.username === comment.authorName || m.name === comment.authorName)?.name || comment.authorName} url={team.find((m) => m.username === comment.authorName || m.name === comment.authorName)?.avatarUrl} />
+                        <span className="text-[var(--br-accent)] text-xs font-bold">{comment.authorName}</span>
+                        <span className="text-[var(--br-accent)]/50 text-xs">
                           {new Date(comment.createdAt).toLocaleString("pt-BR")}
                         </span>
                         {comment.authorName === currentUser.username && (
@@ -1424,42 +2426,42 @@ function TaskEditModal({
                             if (editingCommentId === comment.id) { setEditingCommentId(null) }
                             else { setEditingCommentId(comment.id); setEditingCommentContent(comment.content) }
                           }}
-                            className="ml-auto text-[#00FF66]/50 hover:text-[#00FF66] text-xs px-1 border border-[#262626] hover:border-[#00FF66] transition-colors">[ EDIT ]</button>
+                            className="ml-auto text-[var(--br-accent)]/50 hover:text-[var(--br-accent)] text-xs px-1 border border-[var(--br-border)] hover:border-[var(--br-accent)] transition-colors">[ EDIT ]</button>
                         )}
                       </div>
                       {editingCommentId === comment.id ? (
                         <div className="space-y-2">
                           <textarea value={editingCommentContent} onChange={(e) => setEditingCommentContent(e.target.value)}
                             rows={3}
-                            className="w-full px-3 py-2 bg-black border border-[#00FF66] text-white text-sm focus:outline-none resize-none" />
+                            className="w-full px-3 py-2 bg-[var(--br-bg)] border border-[var(--br-accent)] text-[var(--br-text)] text-sm focus:outline-none resize-none" />
                           <div className="flex gap-2">
                             <button onClick={() => handleEditComment(comment.id)} disabled={!editingCommentContent.trim()}
-                              className="flex-1 h-8 border border-[#00FF66] text-[#00FF66] text-xs hover:bg-[#00FF66] hover:text-black transition-colors disabled:opacity-50">[ SAVE_EDIT ]</button>
+                              className="flex-1 h-8 border border-[var(--br-accent)] text-[var(--br-accent)] text-xs hover:bg-[var(--br-accent)] hover:text-black transition-colors disabled:opacity-50">[ SAVE_EDIT ]</button>
                             <button onClick={() => setEditingCommentId(null)}
-                              className="h-8 px-3 border border-[#262626] text-[#00FF66]/50 text-xs hover:border-[#00FF66] transition-colors">[ CANCEL ]</button>
+                              className="h-8 px-3 border border-[var(--br-border)] text-[var(--br-accent)]/50 text-xs hover:border-[var(--br-accent)] transition-colors">[ CANCEL ]</button>
                           </div>
                         </div>
                       ) : (
-                        <div className="text-white text-sm break-words">{comment.content}</div>
+                        <div className="text-[var(--br-text)] text-sm break-words">{comment.content}</div>
                       )}
                     </div>
                   ))
                 )}
               </div>
 
-              <div className="text-[#00FF66] text-xs mb-2">{">"} NEW_COMMENT (use @ para mencionar):</div>
+              <div className="text-[var(--br-accent)] text-xs mb-2">{">"} NEW_COMMENT (use @ para mencionar):</div>
               <MentionInput value={newComment} onChange={setNewComment}
                 onSubmit={handleAddComment} team={team} placeholder="Digite seu comentário..." />
             </div>
 
             <div className="flex items-center justify-between">
-              <div className="text-[#00FF66]/50 text-xs">
+              <div className="text-[var(--br-accent)]/50 text-xs">
                 {">"} CREATED: {new Date(task.createdAt).toLocaleString("pt-BR")} | ID: {task.id.slice(0, 8)}...
               </div>
               {!confirmArchive ? (
                 <button
                   onClick={() => setConfirmArchive(true)}
-                  className="flex items-center gap-1 px-2 py-1 text-[10px] border border-[#2a2a2a] rounded text-[#888] hover:border-[#ffcc00] hover:text-[#ffcc00] transition-all"
+                  className="flex items-center gap-1 px-2 py-1 text-[10px] border border-[var(--br-border)] rounded text-[var(--br-text-secondary)] hover:border-[#ffcc00] hover:text-[#ffcc00] transition-all"
                 >
                   🗄 arquivar
                 </button>
@@ -1479,7 +2481,7 @@ function TaskEditModal({
                   </button>
                   <button
                     onClick={() => setConfirmArchive(false)}
-                    className="px-2 py-1 border border-[#2a2a2a] text-[#888] text-[10px] rounded hover:border-[#00FF66] transition-colors"
+                    className="px-2 py-1 border border-[var(--br-border)] text-[var(--br-text-secondary)] text-[10px] rounded hover:border-[var(--br-accent)] transition-colors"
                   >
                     não
                   </button>
@@ -1487,6 +2489,7 @@ function TaskEditModal({
               )}
             </div>
           </div>
+          )}
         </div>
       </div>
     </div>
@@ -1507,6 +2510,11 @@ function SortableTaskCard({
   onCancel,
   onToggleComplete,
   isAprovadoColumn,
+  showSubtasks,
+  team,
+  onSubtaskStatusChange,
+  onSubtaskAssigneeChange,
+  onCoverClick,
 }: {
   task: Task
   columnIndex: number
@@ -1520,8 +2528,14 @@ function SortableTaskCard({
   onCancel?: () => void
   onToggleComplete?: () => void
   isAprovadoColumn?: boolean
+  showSubtasks?: boolean
+  team: TeamMember[]
+  onSubtaskStatusChange: (subtaskId: string, newStatus: string) => void
+  onSubtaskAssigneeChange: (subtaskId: string, assigneeId: string | null) => void
+  onCoverClick: () => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id })
+  const cover = !!task.coverImageUrl
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -1531,21 +2545,30 @@ function SortableTaskCard({
   return (
     <div
       ref={setNodeRef}
-      style={style}
       onClick={onEdit}
-      className={`border p-3 cursor-pointer transition-colors relative ${
+      style={cover
+        ? { ...style, backgroundImage: `url("${task.coverImageUrl}")`, backgroundSize: "cover", backgroundPosition: "center" }
+        : style}
+      className={`border p-3 cursor-pointer transition-colors relative overflow-hidden ${
         task.isComplete
-          ? "bg-[#00ff88] border-[#00cc6a]"
-          : "border-[#262626] bg-[#1A1A1A] hover:border-[#00FF66]/50"
+          ? "bg-[var(--br-accent-strong)] border-[var(--br-accent-strong)]"
+          : "border-[var(--br-border)] bg-[var(--br-bg-secondary)] hover:border-[var(--br-accent)]/50"
       }`}
     >
+      {cover && (
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.65), rgba(0,0,0,0.35) 45%, rgba(0,0,0,0.8))" }}
+        />
+      )}
+      <div className="relative z-10">
       {isAprovadoColumn || task.isComplete ? (
         <button
           onClick={(e) => { e.stopPropagation(); if (isAprovadoColumn) onToggleComplete?.() }}
           className={`absolute top-2 right-2 w-5 h-5 flex items-center justify-center rounded-sm z-10 transition-colors ${
             task.isComplete
               ? "text-[#0a0a0a]"
-              : "text-[#888] hover:text-[#00ff88]"
+              : "text-[var(--br-text-secondary)] hover:text-[var(--br-accent-strong)]"
           } ${!isAprovadoColumn && task.isComplete ? "cursor-default" : ""}`}
           title={
             !isAprovadoColumn && task.isComplete
@@ -1558,7 +2581,7 @@ function SortableTaskCard({
           {task.isComplete ? "✓" : "○"}
         </button>
       ) : null}
-      <div {...attributes} {...listeners} className={`text-xs mb-1 cursor-grab active:cursor-grabbing select-none ${task.isComplete ? "text-[#0a2a1a]" : "text-[#00FF66]/30"}`}>
+      <div {...attributes} {...listeners} className={`text-xs mb-1 cursor-grab active:cursor-grabbing select-none ${cover ? "text-white/40" : task.isComplete ? "text-[var(--br-accent-muted)]" : "text-[var(--br-accent)]/30"}`}>
         ⠿ {task.title ? "DRAG" : ""}
       </div>
       {task.labels.length > 0 && (
@@ -1569,26 +2592,34 @@ function SortableTaskCard({
         </div>
       )}
 
-      <div className={`font-bold text-sm mb-2 break-words ${task.isComplete ? "text-[#0a0a0a] line-through" : "text-white"}`}>{task.title}</div>
+      <div className={`font-bold text-sm mb-2 break-words ${cover ? "text-white" : task.isComplete ? "text-[#0a0a0a] line-through" : "text-[var(--br-text)]"}`}>{task.title}</div>
       {task.description && (
-        <div className={`text-xs mb-3 break-words line-clamp-2 ${task.isComplete ? "text-[#0a0a0a]" : "text-white/70"}`}>{task.description}</div>
+        <div className={`text-xs mb-3 break-words whitespace-pre-wrap overflow-y-auto h-[4.5rem] ${cover ? "text-white/85" : task.isComplete ? "text-[#0a0a0a]" : "text-[var(--br-text)]/70"}`}>{task.description}</div>
       )}
 
-      <div className={`text-xs mb-3 flex flex-wrap gap-1 ${task.isComplete ? "text-[#0a2a1a]" : "text-[#00FF66]"}`}>
-        {task.assignees.map((assignee, i) => {
-          const display = assignee.startsWith("@") ? assignee : `@${assignee.toLowerCase().replace(/\s+/g, "_")}`
-          return <span key={i}>{display}{i < task.assignees.length - 1 ? "," : ""}</span>
-        })}
+      <div className={`text-xs mb-3 flex flex-wrap items-center gap-1 ${cover ? "text-white/90" : task.isComplete ? "text-[var(--br-accent-muted)]" : "text-[var(--br-accent)]"}`}>
+        {task.assigneeId ? (
+          <MemberAvatar
+            name={team.find((m) => m.id === task.assigneeId)?.name || "—"}
+            url={team.find((m) => m.id === task.assigneeId)?.avatarUrl || null}
+            size={20}
+          />
+        ) : (
+          task.assignees.map((assignee, i) => {
+            const display = assignee.startsWith("@") ? assignee : `@${assignee.toLowerCase().replace(/\s+/g, "_")}`
+            return <span key={i}>{display}{i < task.assignees.length - 1 ? "," : ""}</span>
+          })
+        )}
       </div>
 
       {task.comments.length > 0 && (
-        <div className={`text-xs mb-3 ${task.isComplete ? "text-[#0a2a1a]/70" : "text-[#00FF66]/50"}`}>[ {task.comments.length} COMMENT{task.comments.length > 1 ? "S" : ""} ]</div>
+        <div className={`text-xs mb-3 ${cover ? "text-white/75" : task.isComplete ? "text-[var(--br-accent-muted)]/70" : "text-[var(--br-accent)]/50"}`}>[ {task.comments.length} COMMENT{task.comments.length > 1 ? "S" : ""} ]</div>
       )}
       {task.files && task.files.length > 0 && (
-        <div className={`text-xs mb-3 ${task.isComplete ? "text-[#0a2a1a]/70" : "text-[#00FF66]/50"}`}>[ {task.files.length} FILE{task.files.length > 1 ? "S" : ""} ]</div>
+        <div className={`text-xs mb-3 ${cover ? "text-white/75" : task.isComplete ? "text-[var(--br-accent-muted)]/70" : "text-[var(--br-accent)]/50"}`}>[ {task.files.length} FILE{task.files.length > 1 ? "S" : ""} ]</div>
       )}
       {task.subtaskCount !== undefined && task.subtaskCount > 0 && (
-        <div className={`text-xs mb-3 ${task.isComplete ? "text-[#0a2a1a]/70" : "text-[#00FF66]/50"}`}>
+        <div className={`text-xs mb-3 ${cover ? "text-white/75" : task.isComplete ? "text-[var(--br-accent-muted)]/70" : "text-[var(--br-accent)]/50"}`}>
           [ {task.subtaskCount} SUBTASK{(task.subtaskCount || 0) > 1 ? "S" : ""} ]
           {(task.totalEstimatedHours || 0) > 0 && <> | EST: {task.totalEstimatedHours}h</>}
           {(task.totalTimeSpent || 0) > 0 && (
@@ -1597,27 +2628,48 @@ function SortableTaskCard({
         </div>
       )}
 
+      {showSubtasks && (task.subtasks || []).length > 0 && (
+        <div className="mb-3" onClick={(e) => e.stopPropagation()}>
+          <div className={`text-[10px] mb-1.5 ${cover ? "text-white/60" : task.isComplete ? "text-[var(--br-accent-muted)]/60" : "text-[var(--br-accent)]/40"}`}>
+            {">"} SUBTAREFAS:
+          </div>
+          <div className="space-y-2">
+            {(task.subtasks || []).map((st) => (
+              <SubtaskCard
+                key={st.id}
+                subtask={st}
+                team={team}
+                onStatusChange={onSubtaskStatusChange}
+                onAssigneeChange={onSubtaskAssigneeChange}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="flex gap-1 flex-wrap" onClick={(e) => e.stopPropagation()}>
         <div className="flex flex-col gap-1 mr-1">
           <button
             onClick={() => onMoveVertical("up")}
             disabled={taskIndex === 0}
-            className="h-6 w-6 border border-[#262626] text-[#00FF66] text-xs hover:border-[#00FF66] transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
+            className="h-6 w-6 border border-[var(--br-border)] text-[var(--br-accent)] text-xs hover:border-[var(--br-accent)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
           >▲</button>
           <button
             onClick={() => onMoveVertical("down")}
             disabled={taskIndex === totalTasks - 1}
-            className="h-6 w-6 border border-[#262626] text-[#00FF66] text-xs hover:border-[#00FF66] transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
+            className="h-6 w-6 border border-[var(--br-border)] text-[var(--br-accent)] text-xs hover:border-[var(--br-accent)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
           >▼</button>
         </div>
         {columnIndex > 0 && (
-          <button onClick={() => onMove("left")} className="h-8 px-2 border border-[#262626] text-[#00FF66] text-xs hover:border-[#00FF66] transition-colors">←</button>
+          <button onClick={() => onMove("left")} className="h-8 px-2 border border-[var(--br-border)] text-[var(--br-accent)] text-xs hover:border-[var(--br-accent)] transition-colors">←</button>
         )}
         {columnIndex < totalColumns - 1 && (
-          <button onClick={() => onMove("right")} className="h-8 px-2 border border-[#262626] text-[#00FF66] text-xs hover:border-[#00FF66] transition-colors">→</button>
+          <button onClick={() => onMove("right")} className="h-8 px-2 border border-[var(--br-border)] text-[var(--br-accent)] text-xs hover:border-[var(--br-accent)] transition-colors">→</button>
         )}
-        <button onClick={onDelete} className="h-8 px-2 border border-[#FF3333]/50 text-[#FF3333] text-xs hover:border-[#FF3333] hover:bg-[#FF3333] hover:text-black transition-colors ml-auto">DEL</button>
-        {onCancel && <button onClick={onCancel} className="h-8 px-2 border border-[#FF3333] text-[#FF3333] text-xs hover:bg-[#FF3333] hover:text-black transition-colors">✕</button>}
+        <button onClick={onDelete} className="h-8 px-2 border border-[var(--br-danger)]/50 text-[var(--br-danger)] text-xs hover:border-[var(--br-danger)] hover:bg-[var(--br-danger)] hover:text-black transition-colors ml-auto">DEL</button>
+        <button onClick={onCoverClick} className="h-8 px-2 border border-[var(--br-border)] text-[var(--br-accent)] text-xs hover:border-[var(--br-accent)] transition-colors" title="Adicionar capa">CAPA</button>
+        {onCancel && <button onClick={onCancel} className="h-8 px-2 border border-[var(--br-danger)] text-[var(--br-danger)] text-xs hover:bg-[var(--br-danger)] hover:text-black transition-colors">✕</button>}
+      </div>
       </div>
     </div>
   )
@@ -1658,25 +2710,25 @@ function NewTaskForm({
   }
 
   return (
-    <div className="border border-[#00FF66] p-3 mt-3">
-      <div className="text-[#00FF66] text-xs mb-3">{">"} NEW_TASK_ENTRY</div>
+    <div className="border border-[var(--br-accent)] p-3 mt-3">
+      <div className="text-[var(--br-accent)] text-xs mb-3">{">"} NEW_TASK_ENTRY</div>
       <div className="space-y-3">
         <input
           type="text"
           placeholder="TITLE..."
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          className="w-full h-12 px-3 bg-[#1A1A1A] border border-[#262626] text-white text-base placeholder:text-[#00FF66]/30 focus:border-[#00FF66] focus:outline-none"
+          className="w-full h-12 px-3 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-text)] text-base placeholder:text-[var(--br-accent)]/30 focus:border-[var(--br-accent)] focus:outline-none"
         />
         <textarea
           placeholder="DESCRIPTION..."
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           rows={3}
-          className="w-full px-3 py-2 bg-[#1A1A1A] border border-[#262626] text-white text-base placeholder:text-[#00FF66]/30 focus:border-[#00FF66] focus:outline-none resize-none"
+          className="w-full px-3 py-2 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-text)] text-base placeholder:text-[var(--br-accent)]/30 focus:border-[var(--br-accent)] focus:outline-none resize-none"
         />
         <div>
-          <div className="text-[#00FF66] text-xs mb-2">{">"} SELECT_ASSIGNEES:</div>
+          <div className="text-[var(--br-accent)] text-xs mb-2">{">"} SELECT_ASSIGNEES:</div>
           <div className="flex flex-wrap gap-2">
             {team.map((member) => (
               <button
@@ -1684,8 +2736,8 @@ function NewTaskForm({
                 onClick={() => toggleAssignee(member.name)}
                 className={`px-2 py-1 border text-xs transition-colors ${
                   assignees.includes(member.name)
-                    ? "border-[#00FF66] bg-[#00FF66] text-black"
-                    : "border-[#262626] text-white hover:border-[#00FF66]"
+                    ? "border-[var(--br-accent)] bg-[var(--br-accent)] text-black"
+                    : "border-[var(--br-border)] text-[var(--br-text)] hover:border-[var(--br-accent)]"
                 }`}
               >
                 @{member.username}
@@ -1697,13 +2749,13 @@ function NewTaskForm({
           <button
             onClick={handleSubmit}
             disabled={!title.trim()}
-            className="flex-1 h-12 border border-[#00FF66] text-[#00FF66] text-xs hover:bg-[#00FF66] hover:text-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 h-12 border border-[var(--br-accent)] text-[var(--br-accent)] text-xs hover:bg-[var(--br-accent)] hover:text-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             [ CREATE ]
           </button>
           <button
             onClick={onCancel}
-            className="h-12 px-4 border border-[#262626] text-[#00FF66]/50 text-xs hover:border-[#00FF66] transition-colors"
+            className="h-12 px-4 border border-[var(--br-border)] text-[var(--br-accent)]/50 text-xs hover:border-[var(--br-accent)] transition-colors"
           >
             [ CANCEL ]
           </button>
@@ -1754,15 +2806,15 @@ function NewTaskModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-[var(--br-overlay)] z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="border-2 border-[#00FF66] bg-black max-w-md w-full p-5"
+        className="border-2 border-[var(--br-accent)] bg-[var(--br-bg)] max-w-md w-full p-5"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
-          <span className="text-[#00FF66] font-bold text-sm">{">"} NOVA_TAREFA</span>
+          <span className="text-[var(--br-accent)] font-bold text-sm">{">"} NOVA_TAREFA</span>
           {backlogColumn && (
-            <span className="text-[10px] text-[#00FF66]/60 border border-[#00FF66]/30 px-2 py-0.5">
+            <span className="text-[10px] text-[var(--br-accent)]/60 border border-[var(--br-accent)]/30 px-2 py-0.5">
               Status inicial: {backlogColumn.name}
             </span>
           )}
@@ -1776,17 +2828,17 @@ function NewTaskModal({
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") handleSubmit() }}
-            className="w-full h-12 px-3 bg-[#1A1A1A] border border-[#262626] text-white text-base placeholder:text-[#00FF66]/30 focus:border-[#00FF66] focus:outline-none"
+            className="w-full h-12 px-3 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-text)] text-base placeholder:text-[var(--br-accent)]/30 focus:border-[var(--br-accent)] focus:outline-none"
           />
           <textarea
             placeholder="DESCRIÇÃO (opcional)"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={3}
-            className="w-full px-3 py-2 bg-[#1A1A1A] border border-[#262626] text-white text-base placeholder:text-[#00FF66]/30 focus:border-[#00FF66] focus:outline-none resize-none"
+            className="w-full px-3 py-2 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-text)] text-base placeholder:text-[var(--br-accent)]/30 focus:border-[var(--br-accent)] focus:outline-none resize-none"
           />
           <div>
-            <div className="text-[#00FF66] text-xs mb-2">{">"} SELECT_ASSIGNEES:</div>
+            <div className="text-[var(--br-accent)] text-xs mb-2">{">"} SELECT_ASSIGNEES:</div>
             <div className="flex flex-wrap gap-2">
               {team.map((member) => (
                 <button
@@ -1794,8 +2846,8 @@ function NewTaskModal({
                   onClick={() => toggleAssignee(member.name)}
                   className={`px-2 py-1 border text-xs transition-colors ${
                     assignees.includes(member.name)
-                      ? "border-[#00FF66] bg-[#00FF66] text-black"
-                      : "border-[#262626] text-white hover:border-[#00FF66]"
+                      ? "border-[var(--br-accent)] bg-[var(--br-accent)] text-black"
+                      : "border-[var(--br-border)] text-[var(--br-text)] hover:border-[var(--br-accent)]"
                   }`}
                 >
                   @{member.username}
@@ -1807,13 +2859,13 @@ function NewTaskModal({
             <button
               onClick={handleSubmit}
               disabled={!title.trim() || submitting}
-              className="flex-1 h-12 border border-[#00FF66] text-[#00FF66] text-xs hover:bg-[#00FF66] hover:text-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 h-12 border border-[var(--br-accent)] text-[var(--br-accent)] text-xs hover:bg-[var(--br-accent)] hover:text-black transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {submitting ? "CRIANDO..." : "[ CRIAR ]"}
             </button>
             <button
               onClick={onClose}
-              className="h-12 px-4 border border-[#262626] text-[#00FF66]/50 text-xs hover:border-[#00FF66] transition-colors"
+              className="h-12 px-4 border border-[var(--br-border)] text-[var(--br-accent)]/50 text-xs hover:border-[var(--br-accent)] transition-colors"
             >
               [ CANCELAR ]
             </button>
@@ -1831,7 +2883,7 @@ function EmptyListDropZone({ columnId }: { columnId: string }) {
     <div
       ref={setNodeRef}
       className={`min-h-[60px] border-2 border-dashed rounded transition-all ${
-        isOver ? "border-[#00ff88] bg-[rgba(0,255,136,0.06)]" : "border-[#2a2a2a]"
+        isOver ? "border-[var(--br-accent-strong)] bg-[rgba(0,255,136,0.06)]" : "border-[var(--br-border)]"
       }`}
     />
   )
@@ -1854,6 +2906,10 @@ function KanbanColumn({
   columnPosition,
   allColumnsCount,
   onToggleComplete,
+  showSubtasks,
+  onSubtaskStatusChange,
+  onSubtaskAssigneeChange,
+  onCoverClick,
 }: {
   column: Column
   columnIndex: number
@@ -1870,6 +2926,10 @@ function KanbanColumn({
   columnPosition?: number
   allColumnsCount?: number
   onToggleComplete?: (taskId: string) => void
+  showSubtasks?: boolean
+  onSubtaskStatusChange: (subtaskId: string, newStatus: string) => void
+  onSubtaskAssigneeChange: (subtaskId: string, assigneeId: string | null) => void
+  onCoverClick: (task: Task) => void
 }) {
   const taskIds = column.tasks.map((t) => t.id)
   const [editingName, setEditingName] = useState(false)
@@ -1900,8 +2960,8 @@ function KanbanColumn({
   }
 
   return (
-    <div className="flex-shrink-0 w-72 md:w-80 border border-[#262626] bg-black flex flex-col max-h-full">
-      <div className="border-b border-[#262626] p-3 flex items-center justify-between bg-[#1A1A1A]">
+    <div className="flex-shrink-0 w-72 md:w-80 border border-[var(--br-border)] bg-[var(--br-bg)] flex flex-col max-h-full">
+      <div className="border-b border-[var(--br-border)] p-3 flex items-center justify-between bg-[var(--br-bg-secondary)]">
         <div className="flex items-center gap-2 min-w-0 flex-1">
           {editingName ? (
             <div className="relative flex-1">
@@ -1916,19 +2976,19 @@ function KanbanColumn({
                 onBlur={saveColumnName}
                 maxLength={55}
                 autoFocus
-                className="w-full bg-[#0a0a0a] border rounded px-1.5 py-0.5 text-xs text-[#f0f0f0] focus:outline-none"
+                className="w-full bg-[#0a0a0a] border rounded px-1.5 py-0.5 text-xs text-[var(--br-text)] focus:outline-none"
               />
-              {nameSaving && <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[10px] text-[#00ff88] animate-pulse">✓</span>}
-              {nameError && <div className="absolute top-full left-0 mt-1 text-[10px] text-[#ff4444] bg-[#1a0000] border border-[#5a0000] rounded px-2 py-1 z-50 whitespace-nowrap">{nameError}</div>}
+              {nameSaving && <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[10px] text-[var(--br-accent-strong)] animate-pulse">✓</span>}
+              {nameError && <div className="absolute top-full left-0 mt-1 text-[10px] text-[var(--br-danger)] bg-[var(--br-danger-bg)] border border-[var(--br-danger-border)] rounded px-2 py-1 z-50 whitespace-nowrap">{nameError}</div>}
             </div>
           ) : (
             <span
               onClick={() => { setNameDraft(column.name); setEditingName(true); setTimeout(() => nameInputRef.current?.select(), 50) }}
-              className="text-[#00FF66] font-bold text-sm truncate cursor-pointer hover:text-[#00ff88] transition-colors"
+              className="text-[var(--br-accent)] font-bold text-sm truncate cursor-pointer hover:text-[var(--br-accent-strong)] transition-colors"
               title="Clique para renomear"
             >{column.name}</span>
           )}
-          <span className="text-[#00FF66]/50 text-xs shrink-0">[{column.tasks.length}]</span>
+          <span className="text-[var(--br-accent)]/50 text-xs shrink-0">[{column.tasks.length}]</span>
         </div>
         <div className="flex items-center gap-1 shrink-0">
           {onMoveColumn && columnPosition !== undefined && (
@@ -1936,17 +2996,17 @@ function KanbanColumn({
               <button
                 onClick={() => onMoveColumn("left")}
                 disabled={columnPosition === 0}
-                className="h-5 w-5 border border-[#262626] text-[#00FF66] text-[10px] hover:border-[#00FF66] transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
+                className="h-5 w-5 border border-[var(--br-border)] text-[var(--br-accent)] text-[10px] hover:border-[var(--br-accent)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
               >◀</button>
               <button
                 onClick={() => onMoveColumn("right")}
                 disabled={columnPosition === (allColumnsCount ?? totalColumns) - 1}
-                className="h-5 w-5 border border-[#262626] text-[#00FF66] text-[10px] hover:border-[#00FF66] transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
+                className="h-5 w-5 border border-[var(--br-border)] text-[var(--br-accent)] text-[10px] hover:border-[var(--br-accent)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center"
               >▶</button>
             </>
           )}
           {!isDefault && (
-            <button onClick={onDeleteColumn} className="text-[#FF3333]/50 hover:text-[#FF3333] text-xs transition-colors px-1">×</button>
+            <button onClick={onDeleteColumn} className="text-[var(--br-danger)]/50 hover:text-[var(--br-danger)] text-xs transition-colors px-1">×</button>
           )}
         </div>
       </div>
@@ -1968,6 +3028,11 @@ function KanbanColumn({
               onCancel={onCancelTask ? () => onCancelTask(task) : undefined}
               onToggleComplete={() => onToggleComplete?.(task.id)}
               isAprovadoColumn={column.name === "APROVADO"}
+              showSubtasks={showSubtasks}
+              team={team}
+              onSubtaskStatusChange={onSubtaskStatusChange}
+              onSubtaskAssigneeChange={onSubtaskAssigneeChange}
+              onCoverClick={() => onCoverClick(task)}
             />
           ))}
           {column.tasks.length === 0 && (
@@ -1990,27 +3055,27 @@ function NewColumnForm({
   const [title, setTitle] = useState("")
 
   return (
-    <div className="flex-shrink-0 w-72 md:w-80 border border-[#00FF66] p-4 bg-black">
-      <div className="text-[#00FF66] text-xs mb-3">{">"} NEW_COLUMN</div>
+    <div className="flex-shrink-0 w-72 md:w-80 border border-[var(--br-accent)] p-4 bg-[var(--br-bg)]">
+      <div className="text-[var(--br-accent)] text-xs mb-3">{">"} NEW_COLUMN</div>
       <input
         type="text"
         placeholder="COLUMN_NAME..."
         value={title}
         onChange={(e) => setTitle(e.target.value)}
-        className="w-full h-12 px-3 bg-[#1A1A1A] border border-[#262626] text-white text-base placeholder:text-[#00FF66]/30 focus:border-[#00FF66] focus:outline-none mb-3"
+        className="w-full h-12 px-3 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-text)] text-base placeholder:text-[var(--br-accent)]/30 focus:border-[var(--br-accent)] focus:outline-none mb-3"
         autoFocus
       />
       <div className="flex gap-2">
         <button
           onClick={() => title.trim() && onSubmit(title.trim().toUpperCase())}
           disabled={!title.trim()}
-          className="flex-1 h-10 border border-[#00FF66] text-[#00FF66] text-xs hover:bg-[#00FF66] hover:text-black transition-colors disabled:opacity-50"
+          className="flex-1 h-10 border border-[var(--br-accent)] text-[var(--br-accent)] text-xs hover:bg-[var(--br-accent)] hover:text-black transition-colors disabled:opacity-50"
         >
           [ CREATE ]
         </button>
         <button
           onClick={onCancel}
-          className="h-10 px-3 border border-[#262626] text-[#00FF66]/50 text-xs hover:border-[#00FF66] transition-colors"
+          className="h-10 px-3 border border-[var(--br-border)] text-[var(--br-accent)]/50 text-xs hover:border-[var(--br-accent)] transition-colors"
         >
           [ CANCEL ]
         </button>
@@ -2038,30 +3103,34 @@ function Header({
   showTeam: boolean
 }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const { theme, setTheme } = useTheme()
 
   return (
-    <header className="border-b-2 border-[#00FF66] bg-black sticky top-0 z-40">
+    <header className="border-b-2 border-[var(--br-accent)] bg-[var(--br-bg)] sticky top-0 z-40">
       <div className="px-3 py-3 md:px-6 md:py-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-[#00FF66]">
+          <div className="flex items-center gap-2 text-[var(--br-accent)]">
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden w-8 h-8 bg-[#1A1A1A] border border-[#262626] flex items-center justify-center mr-2"
+              className="md:hidden w-8 h-8 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] flex items-center justify-center mr-2"
             >
-              <span className="text-[#888] text-xs">{mobileMenuOpen ? "✕" : "☰"}</span>
+              <span className="text-[var(--br-text-secondary)] text-xs">{mobileMenuOpen ? "✕" : "☰"}</span>
             </button>
             <span className="text-lg md:text-xl font-bold">BRO.LABS</span>
-            <span className="text-[#00FF66]/50 text-xs hidden sm:inline">
+            <span className="text-[var(--br-accent)]/50 text-xs hidden sm:inline">
               {"// BROLABTASK_CLI_v2.0"}
             </span>
           </div>
 
           <div className="hidden md:flex items-center gap-3">
-            <div className="border border-[#262626] px-3 py-2 text-xs">
-              <span className="text-[#00FF66]/50">USER:</span>
-              <span className="text-white ml-2">@{currentUser.username}</span>
+            <div className="border border-[var(--br-border)] px-3 py-2 text-xs flex items-center gap-2">
+              <MemberAvatar name={currentUser.name} url={currentUser.avatarUrl} />
+              <span>
+                <span className="text-[var(--br-accent)]/50">USER:</span>
+                <span className="text-[var(--br-text)] ml-2">@{currentUser.username}</span>
+              </span>
               {currentUser.isAdmin && (
-                <span className="text-[#FF3333] ml-2">[ADMIN]</span>
+                <span className="text-[var(--br-danger)] ml-2">[ADMIN]</span>
               )}
             </div>
 
@@ -2072,17 +3141,30 @@ function Header({
 
             <button
               onClick={onEditProfile}
-              className="h-10 px-3 border border-[#262626] text-[#00FF66] text-xs hover:border-[#00FF66] transition-colors"
+              className="h-10 px-3 border border-[var(--br-border)] text-[var(--br-accent)] text-xs hover:border-[var(--br-accent)] transition-colors"
             >
               [ EDIT_PROFILE ]
             </button>
+
+            <div className="h-10 flex items-center gap-1 border border-[var(--br-border)] px-1" title="Tema da interface">
+              <span className="text-[var(--br-text-secondary)] text-[10px] px-1">TEMA:</span>
+              <select
+                value={theme}
+                onChange={(e) => setTheme(e.target.value as ThemeName)}
+                className="h-full bg-transparent text-[var(--br-accent)] text-xs focus:outline-none"
+              >
+                <option value="dark">ESCURO</option>
+                <option value="clean">CLARO_CLEAN</option>
+                <option value="warm">CLARO_WARM</option>
+              </select>
+            </div>
 
             <button
               onClick={onToggleTeam}
               className={`h-10 px-3 border text-xs transition-colors ${
                 showTeam
-                  ? "border-[#00FF66] bg-[#00FF66] text-black"
-                  : "border-[#00FF66] bg-black text-[#00FF66] hover:bg-[#262626]"
+                  ? "border-[var(--br-accent)] bg-[var(--br-accent)] text-black"
+                  : "border-[var(--br-accent)] bg-[var(--br-bg)] text-[var(--br-accent)] hover:bg-[var(--br-border)]"
               }`}
             >
               [ VIEW_TEAM ]
@@ -2090,7 +3172,7 @@ function Header({
 
             <button
               onClick={onLogout}
-              className="h-10 px-3 border border-[#FF3333] text-[#FF3333] text-xs hover:bg-[#FF3333] hover:text-black transition-colors"
+              className="h-10 px-3 border border-[var(--br-danger)] text-[var(--br-danger)] text-xs hover:bg-[var(--br-danger)] hover:text-black transition-colors"
             >
               [ EXIT_SESSION ]
             </button>
@@ -2105,24 +3187,39 @@ function Header({
         </div>
 
         {mobileMenuOpen && (
-          <div className="md:hidden mt-3 pt-3 border-t border-[#262626] space-y-2">
-            <div className="border border-[#262626] px-3 py-2 text-xs">
-              <span className="text-[#00FF66]/50">USER:</span>
-              <span className="text-white ml-2">@{currentUser.username}</span>
+          <div className="md:hidden mt-3 pt-3 border-t border-[var(--br-border)] space-y-2">
+            <div className="border border-[var(--br-border)] px-3 py-2 text-xs flex items-center gap-2">
+              <MemberAvatar name={currentUser.name} url={currentUser.avatarUrl} />
+              <span>
+                <span className="text-[var(--br-accent)]/50">USER:</span>
+                <span className="text-[var(--br-text)] ml-2">@{currentUser.username}</span>
+              </span>
               {currentUser.isAdmin && (
-                <span className="text-[#FF3333] ml-2">[ADMIN]</span>
+                <span className="text-[var(--br-danger)] ml-2">[ADMIN]</span>
               )}
             </div>
             <button onClick={onEditProfile}
-              className="w-full h-10 border border-[#262626] text-[#00FF66] text-xs hover:border-[#00FF66] transition-colors">[ EDIT_PROFILE ]</button>
+              className="w-full h-10 border border-[var(--br-border)] text-[var(--br-accent)] text-xs hover:border-[var(--br-accent)] transition-colors">[ EDIT_PROFILE ]</button>
+            <div className="flex items-center gap-2 border border-[var(--br-border)] px-2 h-10">
+              <span className="text-[var(--br-text-secondary)] text-[10px]">TEMA:</span>
+              <select
+                value={theme}
+                onChange={(e) => setTheme(e.target.value as ThemeName)}
+                className="flex-1 bg-transparent text-[var(--br-accent)] text-xs focus:outline-none"
+              >
+                <option value="dark">ESCURO</option>
+                <option value="clean">CLARO_CLEAN</option>
+                <option value="warm">CLARO_WARM</option>
+              </select>
+            </div>
             <button onClick={onToggleTeam}
               className={`w-full h-10 border text-xs transition-colors ${
                 showTeam
-                  ? "border-[#00FF66] bg-[#00FF66] text-black"
-                  : "border-[#00FF66] bg-black text-[#00FF66] hover:bg-[#262626]"
+                  ? "border-[var(--br-accent)] bg-[var(--br-accent)] text-black"
+                  : "border-[var(--br-accent)] bg-[var(--br-bg)] text-[var(--br-accent)] hover:bg-[var(--br-border)]"
               }`}>[ VIEW_TEAM ]</button>
             <button onClick={onLogout}
-              className="w-full h-10 border border-[#FF3333] text-[#FF3333] text-xs hover:bg-[#FF3333] hover:text-black transition-colors">[ EXIT_SESSION ]</button>
+              className="w-full h-10 border border-[var(--br-danger)] text-[var(--br-danger)] text-xs hover:bg-[var(--br-danger)] hover:text-black transition-colors">[ EXIT_SESSION ]</button>
           </div>
         )}
       </div>
@@ -2133,17 +3230,17 @@ function Header({
 // ==================== LOADING SCREEN ====================
 function LoadingScreen({ message }: { message: string }) {
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center p-4">
-      <div className="border-2 border-[#00FF66] p-6 md:p-10 w-full max-w-md text-center">
-        <div className="text-[#00FF66] text-2xl md:text-3xl font-bold mb-4">
+    <div className="min-h-screen bg-[var(--br-bg)] flex items-center justify-center p-4">
+      <div className="border-2 border-[var(--br-accent)] p-6 md:p-10 w-full max-w-md text-center">
+        <div className="text-[var(--br-accent)] text-2xl md:text-3xl font-bold mb-4">
           BRO.LABS
         </div>
-        <div className="text-[#00FF66]/70 text-sm mb-6">
+        <div className="text-[var(--br-accent)]/70 text-sm mb-6">
           {">"} {message}
           <span className="animate-pulse">_</span>
         </div>
-        <div className="w-full h-1 bg-[#262626]">
-          <div className="h-full bg-[#00FF66] animate-pulse" style={{ width: "60%" }} />
+        <div className="w-full h-1 bg-[var(--br-border)]">
+          <div className="h-full bg-[var(--br-accent)] animate-pulse" style={{ width: "60%" }} />
         </div>
       </div>
     </div>
@@ -2173,30 +3270,30 @@ function ArchivedCards({
   const filtered = cards.filter((c) => c.title.toLowerCase().includes(search.toLowerCase()))
 
   return (
-    <div className="fixed right-0 top-0 h-full w-80 bg-[#111] border-l border-[#2a2a2a] shadow-2xl z-40 flex flex-col">
-      <div className="flex items-center justify-between p-3 border-b border-[#2a2a2a]">
-        <span className="text-[#00FF66] text-xs font-bold">ARQUIVADOS</span>
-        <button onClick={onClose} className="text-[#888] hover:text-[#00FF66] text-xs">✕</button>
+    <div className="fixed right-0 top-0 h-full w-80 bg-[var(--br-bg-secondary)] border-l border-[var(--br-border)] shadow-2xl z-40 flex flex-col">
+      <div className="flex items-center justify-between p-3 border-b border-[var(--br-border)]">
+        <span className="text-[var(--br-accent)] text-xs font-bold">ARQUIVADOS</span>
+        <button onClick={onClose} className="text-[var(--br-text-secondary)] hover:text-[var(--br-accent)] text-xs">✕</button>
       </div>
-      <div className="p-3 border-b border-[#2a2a2a]">
+      <div className="p-3 border-b border-[var(--br-border)]">
         <input
           type="text"
           placeholder="Buscar..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full h-8 px-2 bg-[#1A1A1A] border border-[#262626] text-white text-xs placeholder:text-[#00FF66]/30 focus:border-[#00FF66] focus:outline-none"
+          className="w-full h-8 px-2 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-text)] text-xs placeholder:text-[var(--br-accent)]/30 focus:border-[var(--br-accent)] focus:outline-none"
         />
       </div>
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
         {loading ? (
-          <div className="text-[#888] text-xs text-center py-8">CARREGANDO...</div>
+          <div className="text-[var(--br-text-secondary)] text-xs text-center py-8">CARREGANDO...</div>
         ) : filtered.length === 0 ? (
-          <div className="text-[#888] text-xs text-center py-8">NENHUM CARD ARQUIVADO</div>
+          <div className="text-[var(--br-text-secondary)] text-xs text-center py-8">NENHUM CARD ARQUIVADO</div>
         ) : (
           filtered.map((card) => (
-            <div key={card.id} className="bg-[#1a1a1a] border border-[#2a2a2a] rounded p-2.5">
-              <div className="text-xs text-[#f0f0f0] line-through opacity-60 font-medium">{card.title}</div>
-              <div className="text-[10px] text-[#888] mt-1">{card.columnName}</div>
+            <div key={card.id} className="bg-[var(--br-bg-secondary)] border border-[var(--br-border)] rounded p-2.5">
+              <div className="text-xs text-[var(--br-text)] line-through opacity-60 font-medium">{card.title}</div>
+              <div className="text-[10px] text-[var(--br-text-secondary)] mt-1">{card.columnName}</div>
               {card.labels.length > 0 && (
                 <div className="flex gap-1 mt-1">
                   {card.labels.map((l) => (
@@ -2204,13 +3301,13 @@ function ArchivedCards({
                   ))}
                 </div>
               )}
-              <div className="text-[10px] text-[#555] mt-1">
+              <div className="text-[10px] text-[var(--br-text-secondary)] mt-1">
                 {new Date(card.updatedAt).toLocaleDateString("pt-BR")}
               </div>
               <div className="flex gap-1 mt-2">
                 <button
                   onClick={() => onRestore(card.id)}
-                  className="flex-1 py-1 bg-[#00ff88] text-[#0a0a0a] text-[10px] rounded font-bold hover:bg-[#00cc6a] transition-colors"
+                  className="flex-1 py-1 bg-[var(--br-accent-strong)] text-[#0a0a0a] text-[10px] rounded font-bold hover:bg-[var(--br-accent-strong)] transition-colors"
                 >
                   RESTAURAR
                 </button>
@@ -2219,7 +3316,7 @@ function ArchivedCards({
                     await fetch(`/api/tasks?id=${card.id}`, { method: "DELETE" })
                     setCards(cards.filter((c) => c.id !== card.id))
                   }}
-                  className="px-2 py-1 border border-[#ff4444] text-[#ff4444] text-[10px] rounded hover:bg-[#ff4444] hover:text-white transition-colors"
+                  className="px-2 py-1 border border-[var(--br-danger)] text-[var(--br-danger)] text-[10px] rounded hover:bg-[var(--br-danger)] hover:text-[var(--br-text)] transition-colors"
                 >
                   EXCLUIR
                 </button>
@@ -2255,26 +3352,26 @@ function ListView({
         const filtered = showCompleted ? col.tasks : col.tasks.filter(t => !t.isComplete)
         const isCollapsed = collapsed[col.id]
         return (
-          <div key={col.id} className="mb-4 border border-[#262626] rounded">
+          <div key={col.id} className="mb-4 border border-[var(--br-border)] rounded">
             <div
               onClick={() => toggleCollapse(col.id)}
-              className="flex items-center gap-2 px-3 py-2 bg-[#1a1a1a] border-b border-[#2a2a2a] cursor-pointer hover:bg-[#222] transition-colors"
+              className="flex items-center gap-2 px-3 py-2 bg-[var(--br-bg-secondary)] border-b border-[var(--br-border)] cursor-pointer hover:bg-[var(--br-hover)] transition-colors"
             >
-              <span className="text-[#00FF66] text-xs font-bold">{isCollapsed ? "▶" : "▼"}</span>
-              <span className="text-[#f0f0f0] text-xs font-bold">{col.name}</span>
-              <span className="bg-[#2a2a2a] text-[#888] text-[10px] px-2 py-0.5 rounded-sm">{col.tasks.length}</span>
+              <span className="text-[var(--br-accent)] text-xs font-bold">{isCollapsed ? "▶" : "▼"}</span>
+              <span className="text-[var(--br-text)] text-xs font-bold">{col.name}</span>
+              <span className="bg-[var(--br-border)] text-[var(--br-text-secondary)] text-[10px] px-2 py-0.5 rounded-sm">{col.tasks.length}</span>
               {!showCompleted && col.tasks.filter(t => t.isComplete).length > 0 && (
-                <span className="text-[#00ff88] text-[10px] ml-auto">+{col.tasks.filter(t => t.isComplete).length} concluída(s)</span>
+                <span className="text-[var(--br-accent-strong)] text-[10px] ml-auto">+{col.tasks.filter(t => t.isComplete).length} concluída(s)</span>
               )}
             </div>
             {!isCollapsed && (
               <div className="overflow-x-auto">
                 {filtered.length === 0 ? (
-                  <div className="text-[#888] text-xs p-4 text-center">Nenhuma tarefa</div>
+                  <div className="text-[var(--br-text-secondary)] text-xs p-4 text-center">Nenhuma tarefa</div>
                 ) : (
                   <table className="w-full text-xs">
                     <thead>
-                      <tr className="border-b border-[#1a1a1a] text-[#888] text-[10px]">
+                      <tr className="border-b border-[var(--br-border)] text-[var(--br-text-secondary)] text-[10px]">
                         <th className="w-8 p-2"></th>
                         <th className="text-left p-2">Título</th>
                         <th className="text-left p-2 hidden sm:table-cell">Etiquetas</th>
@@ -2287,21 +3384,21 @@ function ListView({
                         <tr
                           key={task.id}
                           onClick={() => onEditTask(task, col.id)}
-                          className={`border-b border-[#1a1a1a] hover:bg-[#1a1a1a] transition-all cursor-pointer ${
-                            task.isComplete ? "bg-[#00ff88]/5" : "bg-[#111]"
+                          className={`border-b border-[var(--br-border)] hover:bg-[var(--br-hover)] transition-all cursor-pointer ${
+                            task.isComplete ? "bg-[var(--br-accent-strong)]/5" : "bg-[var(--br-bg-secondary)]"
                           }`}
                         >
                           <td className="p-2" onClick={(e) => e.stopPropagation()}>
                             <button
                               onClick={(e) => { e.stopPropagation(); onToggleComplete?.(task.id) }}
                               className={`w-5 h-5 flex items-center justify-center rounded-sm transition-colors ${
-                                task.isComplete ? "text-[#00ff88]" : "text-[#888] hover:text-[#00ff88]"
+                                task.isComplete ? "text-[var(--br-accent-strong)]" : "text-[var(--br-text-secondary)] hover:text-[var(--br-accent-strong)]"
                               }`}
                             >
                               {task.isComplete ? "✓" : "○"}
                             </button>
                           </td>
-                          <td className={`p-2 font-medium ${task.isComplete ? "text-[#00ff88] line-through" : "text-[#f0f0f0]"}`}>
+                          <td className={`p-2 font-medium ${task.isComplete ? "text-[var(--br-accent-strong)] line-through" : "text-[var(--br-text)]"}`}>
                             {task.title}
                           </td>
                           <td className="p-2 hidden sm:table-cell">
@@ -2310,20 +3407,20 @@ function ListView({
                                 <span key={l.id} className="w-5 h-1.5 rounded-sm inline-block" style={{ backgroundColor: l.color }} />
                               ))}
                               {task.labels.length > 3 && (
-                                <span className="text-[#888] text-[10px]">+{task.labels.length - 3}</span>
+                                <span className="text-[var(--br-text-secondary)] text-[10px]">+{task.labels.length - 3}</span>
                               )}
                             </div>
                           </td>
                           <td className="p-2 hidden md:table-cell">
                             <div className="flex gap-1">
                               {task.assignees.map((a, i) => (
-                                <span key={i} className="w-5 h-5 bg-[#00ff88] rounded-sm flex items-center justify-center text-[#0a0a0a] text-[8px] font-bold">
+                                <span key={i} className="w-5 h-5 bg-[var(--br-accent-strong)] rounded-sm flex items-center justify-center text-[#0a0a0a] text-[8px] font-bold">
                                   {a.charAt(0)}
                                 </span>
                               ))}
                             </div>
                           </td>
-                          <td className="p-2 text-[#888] hidden lg:table-cell">
+                          <td className="p-2 text-[var(--br-text-secondary)] hidden lg:table-cell">
                             {new Date(task.createdAt).toLocaleDateString("pt-BR")}
                           </td>
                         </tr>
@@ -2339,8 +3436,8 @@ function ListView({
       {columns.length > 0 && (
         <label className="flex items-center gap-2 px-3 py-2 cursor-pointer">
           <input type="checkbox" checked={showCompleted} onChange={() => setShowCompleted(!showCompleted)}
-            className="accent-[#00ff88]" />
-          <span className="text-[#888] text-xs">Mostrar concluídas</span>
+            className="accent-[var(--br-accent-strong)]" />
+          <span className="text-[var(--br-text-secondary)] text-xs">Mostrar concluídas</span>
         </label>
       )}
     </div>
@@ -2353,6 +3450,7 @@ function KanbanBoard({
   team,
   columns,
   notifications,
+  workspaceLabels,
   onLogout,
   onUpdateUser,
   onAddTeamMember,
@@ -2364,17 +3462,20 @@ function KanbanBoard({
   onDeleteTask,
   onMoveTask,
   onAddComment,
+  onEditComment,
   onMarkNotificationRead,
   onClearAllNotifications,
   refreshData,
   onReorderColumns,
-  onToggleComplete,
   checkSubtaskCompletion,
+  deepLink,
+  onAvatarUpdated,
 }: {
   currentUser: TeamMember
   team: TeamMember[]
   columns: Column[]
   notifications: Notification[]
+  workspaceLabels: Label[]
   onLogout: () => void
   onUpdateUser: (updates: Partial<TeamMember> & { password?: string }) => void
   onAddTeamMember: (member: { name: string; username: string; role: string; email: string; password: string; isAdmin: boolean }) => void
@@ -2391,8 +3492,9 @@ function KanbanBoard({
   onClearAllNotifications: () => void
   refreshData: () => void
   onReorderColumns?: (columns: Column[]) => void
-  onToggleComplete?: (taskId: string) => void
   checkSubtaskCompletion: (taskId: string) => Promise<boolean>
+  deepLink?: { taskId: string; subtaskId?: string } | null
+  onAvatarUpdated?: (avatarUrl: string) => void
 }) {
   const [showTeamModal, setShowTeamModal] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
@@ -2401,33 +3503,49 @@ function KanbanBoard({
   const [editingTask, setEditingTask] = useState<{
     task: Task
     columnId: string
+    focusSubtasks?: boolean
+    focusSubtaskId?: string | null
   } | null>(null)
+  const [coverTask, setCoverTask] = useState<Task | null>(null)
+  const deepLinkHandledRef = useRef<string | null>(null)
   const [activeTask, setActiveTask] = useState<{ task: Task; columnId: string } | null>(null)
   const [filterAssignee, setFilterAssignee] = useState<string[]>([])
   const [filterLabel, setFilterLabel] = useState<string[]>([])
   const [filterSearch, setFilterSearch] = useState("")
   const [filterStatus, setFilterStatus] = useState<"all" | "active" | "complete">("all")
+  const [filterMine, setFilterMine] = useState(false)
   const [pendingCloseTask, setPendingCloseTask] = useState<{
   taskId: string
   fromColumnId: string
   toColumnId: string
   newPosition?: number
-  isToggle?: boolean
 } | null>(null)
+  const [pendingSubtasksTask, setPendingSubtasksTask] = useState<{
+    taskId: string
+    pendingSubtaskIds: string[]
+  } | null>(null)
   const [cancelModalTask, setCancelModalTask] = useState<Task | null>(null)
   const [cancelReason, setCancelReason] = useState("")
   const [viewMode, setViewMode] = useState<"kanban" | "list">("kanban")
   const [showArchived, setShowArchived] = useState(false)
+  const [showSubtasks, setShowSubtasks] = useState(false)
   const [showNewTaskModal, setShowNewTaskModal] = useState(false)
+  const [showLabelManager, setShowLabelManager] = useState(false)
+  const [labelManagerInitial, setLabelManagerInitial] = useState<string | null>(null)
 
-  const allLabels: Label[] = columns.flatMap((c) => c.tasks.flatMap((t) => t.labels))
-    .filter((l, i, arr) => arr.findIndex((x) => x.id === l.id) === i)
+  const allLabels: Label[] = workspaceLabels
+
+  const openLabelManager = (labelId?: string) => {
+    setLabelManagerInitial(labelId ?? null)
+    setShowLabelManager(true)
+  }
 
   const filteredColumns = columns.map((col) => ({
     ...col,
     tasks: col.tasks.filter((t) => {
       if (filterSearch && !t.title.toLowerCase().includes(filterSearch.toLowerCase())) return false
-      if (filterAssignee.length > 0 && !t.assignees.some((a) => filterAssignee.includes(a))) return false
+      if (filterAssignee.length > 0 && !t.assignees.some((a) => filterAssignee.includes(a)) && !(t.assigneeId && filterAssignee.includes(team.find((m) => m.id === t.assigneeId)?.name || ""))) return false
+      if (filterMine && t.assigneeId !== currentUser.id && !t.assignees.some((a) => a === currentUser.name)) return false
       if (filterLabel.length > 0 && !t.labels.some((l) => filterLabel.includes(l.id))) return false
       if (filterStatus === "active" && t.isComplete) return false
       if (filterStatus === "complete" && !t.isComplete) return false
@@ -2437,6 +3555,27 @@ function KanbanBoard({
 
   const findColumnByTaskId = (taskId: string) =>
     columns.find((c) => c.tasks.some((t) => t.id === taskId))
+
+  // Deep link (?task=...&subtask=...): abre o modal da tarefa ao carregar o board
+  useEffect(() => {
+    if (!deepLink || columns.length === 0) return
+    if (deepLinkHandledRef.current === deepLink.taskId) return
+    deepLinkHandledRef.current = deepLink.taskId
+    const col = findColumnByTaskId(deepLink.taskId)
+    const task = col?.tasks.find((t) => t.id === deepLink.taskId)
+    if (task && col) {
+      setEditingTask({
+        task,
+        columnId: col.id,
+        focusSubtasks: !!deepLink.subtaskId,
+        focusSubtaskId: deepLink.subtaskId ?? null,
+      })
+    } else {
+      showToast("TAREFA_NAO_ENCONTRADA_OU_SEM_ACESSO", "warning")
+    }
+    window.history.replaceState(null, "", window.location.pathname)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLink, columns.length])
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -2506,6 +3645,71 @@ function KanbanBoard({
     onMoveTask(taskId, columnId, columnId, newPosition)
   }
 
+  // Toggle task completion (backend valida subtarefas pendentes -> 409)
+  const handleToggleComplete = async (taskId: string) => {
+    const task = columns.flatMap(c => c.tasks).find(t => t.id === taskId)
+    if (!task) return
+    await doToggleComplete(taskId, !task.isComplete)
+  }
+
+  const doToggleComplete = async (taskId: string, complete: boolean) => {
+    const task = columns.flatMap(c => c.tasks).find(t => t.id === taskId)
+    if (!task) return false
+    const res = await fetch("/api/tasks", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: taskId, isComplete: complete }),
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      if (res.status === 409 && data?.pendingSubtaskIds?.length) {
+        setPendingSubtasksTask({ taskId, pendingSubtaskIds: data.pendingSubtaskIds })
+      } else {
+        showToast(data?.error || "ERRO: FALHA_AO_CONCLUIR_TAREFA", "warning")
+      }
+      return false
+    }
+    refreshData()
+    return true
+  }
+
+  const handleViewSubtasks = () => {
+    if (!pendingSubtasksTask) return
+    const taskId = pendingSubtasksTask.taskId
+    const col = findColumnByTaskId(taskId)
+    const task = col?.tasks.find((t) => t.id === taskId)
+    setPendingSubtasksTask(null)
+    if (task && col) {
+      setEditingTask({ task, columnId: col.id, focusSubtasks: true })
+    }
+  }
+
+  const handleSubtaskStatusChange = async (subtaskId: string, newStatus: string) => {
+    try {
+      await fetch("/api/timer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subtaskId, newStatus }),
+      })
+      refreshData()
+    } catch (err) {
+      console.error("Error updating subtask status:", err)
+    }
+  }
+
+  const handleSubtaskAssigneeChange = async (subtaskId: string, assigneeId: string | null) => {
+    try {
+      await fetch("/api/subtasks", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: subtaskId, assigneeId }),
+      })
+      refreshData()
+    } catch (err) {
+      console.error("Error updating subtask assignee:", err)
+    }
+  }
+
   const handleColumnMove = (columnId: string, direction: "left" | "right") => {
     const idx = columns.findIndex((c) => c.id === columnId)
     if (idx === -1) return
@@ -2523,7 +3727,7 @@ function KanbanBoard({
   }
 
   return (
-    <div className="min-h-screen bg-black flex flex-col">
+    <div className="min-h-screen bg-[var(--br-bg)] flex flex-col">
       <Header
         currentUser={currentUser}
         notifications={notifications}
@@ -2559,6 +3763,17 @@ function KanbanBoard({
           user={currentUser}
           onClose={() => setShowProfileEdit(false)}
           onSave={onUpdateUser}
+          onAvatarUpdated={onAvatarUpdated}
+        />
+      )}
+
+      {coverTask && (
+        <CoverPickerModal
+          task={coverTask}
+          onClose={() => setCoverTask(null)}
+          onCoverUpdated={(url) => {
+            onUpdateTask(coverTask.id, { coverImageUrl: url })
+          }}
         />
       )}
 
@@ -2567,6 +3782,9 @@ function KanbanBoard({
           task={editingTask.task}
           team={team}
           currentUser={currentUser}
+          workspaceLabels={workspaceLabels}
+          focusSubtasks={!!editingTask.focusSubtasks}
+          focusSubtaskId={editingTask.focusSubtaskId}
           onClose={() => {
             setEditingTask(null)
             refreshData()
@@ -2585,40 +3803,53 @@ function KanbanBoard({
       )}
 
       {pendingCloseTask && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="border-2 border-[#FF3333] bg-black max-w-lg w-full p-6">
-            <div className="text-[#FF3333] font-bold text-sm mb-4">{">"} SUBTAREFAS_PENDENTES</div>
-            <div className="text-white/70 text-xs mb-6">
-              {pendingCloseTask.isToggle
-                ? "Esta tarefa possui subtarefas que ainda não foram concluídas. Deseja marcá-la como concluída mesmo assim?"
-                : "Esta tarefa possui subtarefas que ainda não foram concluídas (APROVADO/FEITO). Deseja movê-la para FEITO mesmo assim?"}
+        <div className="fixed inset-0 bg-[var(--br-overlay)] z-50 flex items-center justify-center p-4">
+          <div className="border-2 border-[var(--br-danger)] bg-[var(--br-bg)] max-w-lg w-full p-6">
+            <div className="text-[var(--br-danger)] font-bold text-sm mb-4">{">"} SUBTAREFAS_PENDENTES</div>
+            <div className="text-[var(--br-text)]/70 text-xs mb-6">
+              Esta tarefa possui subtarefas que ainda não foram concluídas (APROVADO/FEITO). Deseja movê-la para FEITO mesmo assim?
             </div>
             <div className="flex gap-3">
               <button onClick={async () => {
                 const pt = pendingCloseTask
                 setPendingCloseTask(null)
-                if (pt.isToggle) {
-                  await doToggleComplete(pt.taskId, true)
-                } else {
-                  onMoveTask(pt.taskId, pt.fromColumnId, pt.toColumnId, pt.newPosition)
-                }
-              }} className="flex-1 h-10 border border-[#FF3333] text-[#FF3333] text-xs hover:bg-[#FF3333] hover:text-black transition-colors">
-                {pendingCloseTask.isToggle ? "[ MARCAR_CONCLUIDA ]" : "[ FORCAR_MOVER ]"}
+                onMoveTask(pt.taskId, pt.fromColumnId, pt.toColumnId, pt.newPosition)
+              }} className="flex-1 h-10 border border-[var(--br-danger)] text-[var(--br-danger)] text-xs hover:bg-[var(--br-danger)] hover:text-black transition-colors">
+                [ FORCAR_MOVER ]
               </button>
-              <button onClick={() => setPendingCloseTask(null)} className="flex-1 h-10 border border-[#00FF66] text-[#00FF66] text-xs hover:bg-[#00FF66] hover:text-black transition-colors">[ CANCELAR ]</button>
+              <button onClick={() => setPendingCloseTask(null)} className="flex-1 h-10 border border-[var(--br-accent)] text-[var(--br-accent)] text-xs hover:bg-[var(--br-accent)] hover:text-black transition-colors">[ CANCELAR ]</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingSubtasksTask && (
+        <div className="fixed inset-0 bg-[var(--br-overlay)] z-50 flex items-center justify-center p-4">
+          <div className="border-2 border-[var(--br-danger)] bg-[var(--br-bg)] max-w-lg w-full p-6">
+            <div className="text-[var(--br-danger)] font-bold text-sm mb-4">{">"} SUBTAREFAS_PENDENTES</div>
+            <div className="text-[var(--br-text)]/70 text-xs mb-6">
+              Esta tarefa não pode ser concluída porque possui subtarefas pendentes. Encerre ou reatribua as subtarefas antes de prosseguir.
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setPendingSubtasksTask(null)} className="flex-1 h-10 border border-[var(--br-danger)] text-[var(--br-danger)] text-xs hover:bg-[var(--br-danger)] hover:text-black transition-colors">
+                [ ENTENDI ]
+              </button>
+              <button onClick={handleViewSubtasks} className="flex-1 h-10 border border-[var(--br-accent)] text-[var(--br-accent)] text-xs hover:bg-[var(--br-accent)] hover:text-black transition-colors">
+                [ VER_SUBTAREFAS ]
+              </button>
             </div>
           </div>
         </div>
       )}
 
       {cancelModalTask && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="border-2 border-[#FF3333] bg-black max-w-lg w-full p-6">
-            <div className="text-[#FF3333] font-bold text-sm mb-4">{">"} CANCELAR_TAREFA</div>
-            <div className="text-white/70 text-xs mb-4">Justificativa para cancelamento de "{cancelModalTask.title}":</div>
+        <div className="fixed inset-0 bg-[var(--br-overlay)] z-50 flex items-center justify-center p-4">
+          <div className="border-2 border-[var(--br-danger)] bg-[var(--br-bg)] max-w-lg w-full p-6">
+            <div className="text-[var(--br-danger)] font-bold text-sm mb-4">{">"} CANCELAR_TAREFA</div>
+            <div className="text-[var(--br-text)]/70 text-xs mb-4">Justificativa para cancelamento de "{cancelModalTask.title}":</div>
             <textarea value={cancelReason} onChange={(e) => setCancelReason(e.target.value)}
               rows={4} placeholder="MOTIVO_DO_CANCELAMENTO..."
-              className="w-full px-3 py-2 bg-[#1A1A1A] border border-[#262626] text-white text-sm placeholder:text-[#FF3333]/30 focus:border-[#FF3333] focus:outline-none resize-none mb-4" />
+              className="w-full px-3 py-2 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-text)] text-sm placeholder:text-[var(--br-danger)]/30 focus:border-[var(--br-danger)] focus:outline-none resize-none mb-4" />
             <div className="flex gap-3">
               <button onClick={async () => {
                 if (!cancelModalTask || !cancelReason.trim()) { showToast("Informe o motivo do cancelamento.", "warning"); return }
@@ -2626,8 +3857,8 @@ function KanbanBoard({
                 setCancelModalTask(null)
                 setCancelReason("")
                 showToast("Tarefa cancelada.", "warning")
-              }} className="flex-1 h-10 border border-[#FF3333] text-[#FF3333] text-xs hover:bg-[#FF3333] hover:text-black transition-colors">[ CONFIRMAR_CANCELAMENTO ]</button>
-              <button onClick={() => { setCancelModalTask(null); setCancelReason("") }} className="flex-1 h-10 border border-[#00FF66] text-[#00FF66] text-xs hover:bg-[#00FF66] hover:text-black transition-colors">[ VOLTAR ]</button>
+              }} className="flex-1 h-10 border border-[var(--br-danger)] text-[var(--br-danger)] text-xs hover:bg-[var(--br-danger)] hover:text-black transition-colors">[ CONFIRMAR_CANCELAMENTO ]</button>
+              <button onClick={() => { setCancelModalTask(null); setCancelReason("") }} className="flex-1 h-10 border border-[var(--br-accent)] text-[var(--br-accent)] text-xs hover:bg-[var(--br-accent)] hover:text-black transition-colors">[ VOLTAR ]</button>
             </div>
           </div>
         </div>
@@ -2650,11 +3881,11 @@ function KanbanBoard({
 
       <div className="flex-1 p-3 md:p-6 overflow-hidden">
         <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-2 flex-wrap">
-          <div className="text-[#00FF66] text-sm whitespace-nowrap">{">"} BOARD_STATUS: SUPABASE_CONNECTED</div>
-          <div className="text-[#00FF66]/50 text-xs whitespace-nowrap">COLUMNS: {columns.length} | TASKS: {columns.reduce((acc, col) => acc + col.tasks.length, 0)}</div>
+          <div className="text-[var(--br-accent)] text-sm whitespace-nowrap">{">"} BOARD_STATUS: SUPABASE_CONNECTED</div>
+          <div className="text-[var(--br-accent)]/50 text-xs whitespace-nowrap">COLUMNS: {columns.length} | TASKS: {columns.reduce((acc, col) => acc + col.tasks.length, 0)}</div>
           <button
             onClick={() => setShowNewTaskModal(true)}
-            className="h-8 px-3 border border-[#00ff88] bg-[#00ff88] text-black text-[10px] font-bold hover:bg-[#00e67a] transition-colors flex items-center gap-1 shadow-[0_0_8px_rgba(0,255,136,0.25)]"
+            className="h-8 px-3 border border-[var(--br-accent-strong)] bg-[var(--br-accent-strong)] text-black text-[10px] font-bold hover:bg-[var(--br-accent-strong)] transition-colors flex items-center gap-1 shadow-[0_0_8px_rgba(0,255,136,0.25)]"
           >
             + NOVA TAREFA
           </button>
@@ -2663,8 +3894,8 @@ function KanbanBoard({
               onClick={() => setViewMode("kanban")}
               className={`w-8 h-8 flex items-center justify-center rounded text-xs transition-colors ${
                 viewMode === "kanban"
-                  ? "border border-[#00ff88] bg-[rgba(0,255,136,0.08)] text-[#00ff88]"
-                  : "border border-[#2a2a2a] text-[#888] hover:border-[#3a3a3a]"
+                  ? "border border-[var(--br-accent-strong)] bg-[rgba(0,255,136,0.08)] text-[var(--br-accent-strong)]"
+                  : "border border-[var(--br-border)] text-[var(--br-text-secondary)] hover:border-[var(--br-border-strong)]"
               }`}
               title="Kanban"
             >⊞</button>
@@ -2672,8 +3903,8 @@ function KanbanBoard({
               onClick={() => setViewMode("list")}
               className={`w-8 h-8 flex items-center justify-center rounded text-xs transition-colors ${
                 viewMode === "list"
-                  ? "border border-[#00ff88] bg-[rgba(0,255,136,0.08)] text-[#00ff88]"
-                  : "border border-[#2a2a2a] text-[#888] hover:border-[#3a3a3a]"
+                  ? "border border-[var(--br-accent-strong)] bg-[rgba(0,255,136,0.08)] text-[var(--br-accent-strong)]"
+                  : "border border-[var(--br-border)] text-[var(--br-text-secondary)] hover:border-[var(--br-border-strong)]"
               }`}
               title="Lista"
             >☰</button>
@@ -2683,12 +3914,12 @@ function KanbanBoard({
               value={filterSearch}
               onChange={(e) => setFilterSearch(e.target.value)}
               placeholder="buscar..."
-              className="h-8 w-28 bg-[#1A1A1A] border border-[#262626] rounded px-2 text-[10px] text-[#f0f0f0] placeholder:text-[#555] focus:border-[#00FF66] focus:outline-none focus:w-36 transition-all"
+              className="h-8 w-28 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] rounded px-2 text-[10px] text-[var(--br-text)] placeholder:text-[var(--br-text-secondary)] focus:border-[var(--br-accent)] focus:outline-none focus:w-36 transition-all"
             />
             {filterSearch && (
               <button
                 onClick={() => setFilterSearch("")}
-                className="absolute right-1 top-1/2 -translate-y-1/2 text-[#888] hover:text-[#f0f0f0] text-[10px]"
+                className="absolute right-1 top-1/2 -translate-y-1/2 text-[var(--br-text-secondary)] hover:text-[var(--br-text)] text-[10px]"
               >×</button>
             )}
           </div>
@@ -2699,7 +3930,7 @@ function KanbanBoard({
               const val = e.target.value
               setFilterAssignee(val ? [val] : [])
             }}
-            className="h-8 max-w-[110px] bg-[#1A1A1A] border border-[#262626] text-[#00FF66] text-[10px] focus:border-[#00FF66] focus:outline-none"
+            className="h-8 max-w-[110px] bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-accent)] text-[10px] focus:border-[var(--br-accent)] focus:outline-none"
           >
             <option value="">Membro</option>
             {team.map((m) => (
@@ -2715,7 +3946,7 @@ function KanbanBoard({
               const val = e.target.value
               setFilterLabel(val ? [val] : [])
             }}
-            className="h-8 max-w-[110px] bg-[#1A1A1A] border border-[#262626] text-[#00FF66] text-[10px] focus:border-[#00FF66] focus:outline-none"
+            className="h-8 max-w-[110px] bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-accent)] text-[10px] focus:border-[var(--br-accent)] focus:outline-none"
           >
             <option value="">Label</option>
             {allLabels.map((l) => (
@@ -2725,6 +3956,17 @@ function KanbanBoard({
             ))}
           </select>
 
+          <button
+            onClick={() => setFilterMine(!filterMine)}
+            className={`h-8 px-2 text-[10px] transition-colors ${
+              filterMine
+                ? "bg-[var(--br-accent)] text-black font-bold border border-[var(--br-accent)]"
+                : "bg-[var(--br-bg-secondary)] text-[var(--br-text-secondary)] border border-[var(--br-border)] hover:border-[var(--br-accent)]"
+            }`}
+          >
+            Minhas tarefas
+          </button>
+
           <div className="flex gap-0">
             {(["all", "active", "complete"] as const).map((s) => (
               <button
@@ -2732,8 +3974,8 @@ function KanbanBoard({
                 onClick={() => setFilterStatus(s)}
                 className={`h-8 px-2 text-[10px] transition-colors first:rounded-l last:rounded-r ${
                   filterStatus === s
-                    ? "bg-[#00FF66] text-black font-bold border border-[#00FF66]"
-                    : "bg-[#1A1A1A] text-[#888] border border-[#262626] hover:border-[#3a3a3a]"
+                    ? "bg-[var(--br-accent)] text-black font-bold border border-[var(--br-accent)]"
+                    : "bg-[var(--br-bg-secondary)] text-[var(--br-text-secondary)] border border-[var(--br-border)] hover:border-[var(--br-border-strong)]"
                 }`}
               >
                 {s === "all" ? "Todas" : s === "active" ? "Ativas" : "Feitas"}
@@ -2741,19 +3983,45 @@ function KanbanBoard({
             ))}
           </div>
 
-          {(filterAssignee.length > 0 || filterLabel.length > 0 || filterSearch || filterStatus !== "all") && (
+          {(filterAssignee.length > 0 || filterLabel.length > 0 || filterSearch || filterStatus !== "all" || filterMine) && (
             <button
-              onClick={() => { setFilterAssignee([]); setFilterLabel([]); setFilterSearch(""); setFilterStatus("all") }}
-              className="h-8 px-2 border border-[#FF3333]/50 text-[#FF3333] text-[10px] hover:border-[#FF3333] transition-colors"
+              onClick={() => { setFilterAssignee([]); setFilterLabel([]); setFilterSearch(""); setFilterStatus("all"); setFilterMine(false) }}
+              className="h-8 px-2 border border-[var(--br-danger)]/50 text-[var(--br-danger)] text-[10px] hover:border-[var(--br-danger)] transition-colors"
             >LIMPAR</button>
           )}
           <button
+            onClick={() => setShowSubtasks(!showSubtasks)}
+            title="Mostrar subtarefas como cards no board"
+            className={`h-8 px-2 border text-[10px] transition-colors ${
+              showSubtasks
+                ? "border-[var(--br-accent)] bg-[var(--br-accent)] text-black font-bold"
+                : "border-[var(--br-border)] bg-[var(--br-bg-secondary)] text-[var(--br-text-secondary)] hover:border-[var(--br-border-strong)] hover:text-[var(--br-text)]"
+            }`}
+          >
+            {showSubtasks ? "✓ " : ""}MOSTRAR_SUBTAREFAS
+          </button>
+          <button
             onClick={() => setShowArchived(true)}
-            className="h-8 px-2 border border-[#2a2a2a] text-[#888] text-[10px] hover:border-[#3a3a3a] hover:text-[#f0f0f0] transition-colors flex items-center gap-1"
+            className="h-8 px-2 border border-[var(--br-border)] text-[var(--br-text-secondary)] text-[10px] hover:border-[var(--br-border-strong)] hover:text-[var(--br-text)] transition-colors flex items-center gap-1"
           >
             🗄 arquivados
           </button>
         </div>
+
+        <LabelEditor
+          labels={workspaceLabels}
+          onManage={openLabelManager}
+          onAdd={() => openLabelManager()}
+        />
+
+        {showLabelManager && (
+          <LabelManagerModal
+            labels={workspaceLabels}
+            initialLabelId={labelManagerInitial}
+            onClose={() => setShowLabelManager(false)}
+            onChanged={refreshData}
+          />
+        )}
 
         {showArchived && (
           <ArchivedCards
@@ -2791,7 +4059,11 @@ function KanbanBoard({
                   onMoveColumn={(dir) => handleColumnMove(column.id, dir)}
                   columnPosition={columns.findIndex((c) => c.id === column.id)}
                   allColumnsCount={columns.length}
-                  onToggleComplete={onToggleComplete}
+                  onToggleComplete={handleToggleComplete}
+                  showSubtasks={showSubtasks}
+                  onSubtaskStatusChange={handleSubtaskStatusChange}
+                  onSubtaskAssigneeChange={handleSubtaskAssigneeChange}
+                  onCoverClick={setCoverTask}
                 />
               ))}
 
@@ -2806,7 +4078,7 @@ function KanbanBoard({
             ) : (
               <button
                 onClick={() => setShowNewColumnForm(true)}
-                className="flex-shrink-0 w-72 md:w-80 h-16 border border-dashed border-[#262626] text-[#00FF66]/50 text-xs hover:border-[#00FF66] hover:text-[#00FF66] transition-colors flex items-center justify-center"
+                className="flex-shrink-0 w-72 md:w-80 h-16 border border-dashed border-[var(--br-border)] text-[var(--br-accent)]/50 text-xs hover:border-[var(--br-accent)] hover:text-[var(--br-accent)] transition-colors flex items-center justify-center"
               >
                 [ + NEW COLUMN ]
               </button>
@@ -2814,9 +4086,9 @@ function KanbanBoard({
           </div>
           <DragOverlay dropAnimation={{ duration: 150, easing: "ease-out" }}>
             {activeTask ? (
-              <div className="w-72 bg-[#1e1e1e] border-2 border-[#00ff88] rounded p-2.5 shadow-2xl opacity-95 rotate-1 scale-105 font-mono">
-                <p className="text-xs text-[#f0f0f0] font-bold">{activeTask.task.title}</p>
-                <p className="text-[#00FF66] text-[10px] mt-1">[ DRAGGING ]</p>
+              <div className="w-72 bg-[var(--br-bg-secondary)] border-2 border-[var(--br-accent-strong)] rounded p-2.5 shadow-2xl opacity-95 rotate-1 scale-105 font-mono">
+                <p className="text-xs text-[var(--br-text)] font-bold">{activeTask.task.title}</p>
+                <p className="text-[var(--br-accent)] text-[10px] mt-1">[ DRAGGING ]</p>
               </div>
             ) : null}
           </DragOverlay>
@@ -2825,13 +4097,13 @@ function KanbanBoard({
           <ListView
             columns={filteredColumns}
             onEditTask={(task, colId) => setEditingTask({ task, columnId: colId })}
-            onToggleComplete={onToggleComplete}
+            onToggleComplete={handleToggleComplete}
           />
         )}
       </div>
 
-      <footer className="border-t border-[#262626] p-3 text-center">
-        <span className="text-[#00FF66]/30 text-xs">
+      <footer className="border-t border-[var(--br-border)] p-3 text-center">
+        <span className="text-[var(--br-accent)]/30 text-xs">
           BROLABTASK_CLI_v2.0 © BRO.LABS | SUPABASE_SYNC |{" "}
           {new Date().toLocaleTimeString("pt-BR")}
         </span>
@@ -2868,28 +4140,46 @@ export default function BroLabTask() {
   const [team, setTeam] = useState<TeamMember[]>([])
   const [columns, setColumns] = useState<Column[]>([])
   const [notifications, setNotifications] = useState<Notification[]>([])
+  const [workspaceLabels, setWorkspaceLabels] = useState<Label[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadingMessage, setLoadingMessage] = useState("INITIALIZING_SYSTEM...")
+  const [deepLink, setDeepLink] = useState<{ taskId: string; subtaskId?: string } | null>(null)
+
+  // Deep link: /?task=<taskId>&subtask=<subtaskId>
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search)
+      const taskId = params.get("task")
+      if (!taskId) return
+      const subtaskId = params.get("subtask")
+      setDeepLink(subtaskId ? { taskId, subtaskId } : { taskId })
+    } catch {
+      // ignorar
+    }
+  }, [])
 
   // Fetch all data from API
   const fetchData = useCallback(async () => {
     try {
-      const [columnsRes, tasksRes, usersRes] = await Promise.all([
+      const [columnsRes, tasksRes, usersRes, labelsRes] = await Promise.all([
         fetchWithRefresh("/api/columns"),
         fetchWithRefresh("/api/tasks"),
         fetchWithRefresh("/api/users"),
+        fetchWithRefresh("/api/labels"),
       ])
 
-      const [columnsData, tasksData, usersData] = await Promise.all([
+      const [columnsData, tasksData, usersData, labelsData] = await Promise.all([
         columnsRes.json().catch(() => ({})),
         tasksRes.json().catch(() => ({})),
         usersRes.json().catch(() => ({})),
+        labelsRes.json().catch(() => ({})),
       ])
 
       // Combine columns with their tasks
       const columnsList = Array.isArray(columnsData.columns) ? columnsData.columns : []
       const tasksList = Array.isArray(tasksData.tasks) ? tasksData.tasks : []
       const usersList = Array.isArray(usersData.users) ? usersData.users : []
+      const labelsList = Array.isArray(labelsData.labels) ? labelsData.labels : []
 
       const columnsWithTasks = columnsList.map((col: { id: string; name: string; position: number }) => ({
         ...col,
@@ -2898,6 +4188,7 @@ export default function BroLabTask() {
 
       setColumns(columnsWithTasks)
       setTeam(usersList)
+      setWorkspaceLabels(labelsList)
 
       if (!tasksRes.ok) {
         console.error("Error loading tasks:", tasksData)
@@ -3002,6 +4293,81 @@ export default function BroLabTask() {
       supabase.removeChannel(channel)
     }
   }, [currentUser, fetchNotifications])
+
+  // Subscribe to realtime changes on global labels (rename/color/delete refletem em todos os cartões)
+  useEffect(() => {
+    if (!currentUser) return
+    const supabase = createClient()
+    const sortLabels = (labels: Label[]) =>
+      [...labels].sort((a, b) => a.name.localeCompare(b.name))
+
+    const channel = supabase
+      .channel("labels_workspace")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "labels" },
+        (payload) => {
+          const created: Label = {
+            id: payload.new.id,
+            name: payload.new.name,
+            color: payload.new.color,
+          }
+          setWorkspaceLabels((prev) =>
+            prev.some((l) => l.id === created.id)
+              ? prev
+              : sortLabels([...prev, created]),
+          )
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "labels" },
+        (payload) => {
+          const updated: Label = {
+            id: payload.new.id,
+            name: payload.new.name,
+            color: payload.new.color,
+          }
+          setWorkspaceLabels((prev) => {
+            const next = prev.map((l) => (l.id === updated.id ? updated : l))
+            return next.some((l) => l.id === updated.id)
+              ? sortLabels(next)
+              : sortLabels([...next, updated])
+          })
+          setColumns((prev) =>
+            prev.map((col) => ({
+              ...col,
+              tasks: col.tasks.map((t) => ({
+                ...t,
+                labels: t.labels.map((l) => (l.id === updated.id ? updated : l)),
+              })),
+            })),
+          )
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "labels" },
+        (payload) => {
+          const deletedId = payload.old.id
+          setWorkspaceLabels((prev) => prev.filter((l) => l.id !== deletedId))
+          setColumns((prev) =>
+            prev.map((col) => ({
+              ...col,
+              tasks: col.tasks.map((t) => ({
+                ...t,
+                labels: t.labels.filter((l) => l.id !== deletedId),
+              })),
+            })),
+          )
+        },
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [currentUser])
 
   // Check subtask completion before allowing close
   const checkSubtaskCompletion = async (taskId: string): Promise<boolean> => {
@@ -3203,6 +4569,12 @@ export default function BroLabTask() {
     }
   }
 
+  // Atualiza o avatar do usuário logado (upload de foto de perfil)
+  const handleAvatarUpdated = useCallback((avatarUrl: string) => {
+    setCurrentUser((c) => (c ? { ...c, avatarUrl } : c))
+    fetchData()
+  }, [fetchData])
+
   // Mark notification as read
   const handleMarkNotificationRead = async (id: string) => {
     try {
@@ -3217,40 +4589,6 @@ export default function BroLabTask() {
     } catch (error) {
       console.error("Error marking notification as read:", error)
     }
-  }
-
-  // Toggle task completion (with subtask validation)
-  const handleToggleComplete = async (taskId: string) => {
-    const task = columns.flatMap(c => c.tasks).find(t => t.id === taskId)
-    if (!task) return
-    // Se está marcando como concluída, verificar subtasks pendentes
-    if (!task.isComplete) {
-      const ok = await checkSubtaskCompletion(taskId)
-      if (!ok) {
-        setPendingCloseTask({
-          taskId,
-          fromColumnId: "",
-          toColumnId: "",
-          isToggle: true,
-        })
-        return
-      }
-    }
-    await doToggleComplete(taskId, !task.isComplete)
-  }
-
-  const doToggleComplete = async (taskId: string, complete: boolean) => {
-    const task = columns.flatMap(c => c.tasks).find(t => t.id === taskId)
-    if (!task) return
-    setColumns(prev => prev.map(col => ({
-      ...col,
-      tasks: col.tasks.map(t => t.id === taskId ? { ...t, isComplete: complete } : t),
-    })))
-    await fetch("/api/tasks", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: taskId, isComplete: complete }),
-    })
   }
 
   // Clear all notifications
@@ -3279,6 +4617,7 @@ export default function BroLabTask() {
         team={team}
         columns={columns}
         notifications={notifications}
+        workspaceLabels={workspaceLabels}
         onLogout={handleLogout}
         onUpdateUser={handleUpdateUser}
         onAddTeamMember={handleAddTeamMember}
@@ -3295,8 +4634,9 @@ export default function BroLabTask() {
         onClearAllNotifications={handleClearAllNotifications}
         refreshData={fetchData}
         onReorderColumns={(cols) => setColumns(cols)}
-        onToggleComplete={handleToggleComplete}
         checkSubtaskCompletion={checkSubtaskCompletion}
+        deepLink={deepLink}
+        onAvatarUpdated={handleAvatarUpdated}
       />
       <ToastContainer />
     </>

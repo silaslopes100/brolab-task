@@ -16,7 +16,7 @@ export async function GET(request: Request) {
 
     const { data: user, error } = await supabase
       .from("team_members")
-      .select("id, email, username, name, role, role_id")
+      .select("id, email, username, name, role, role_id, avatar_url")
       .eq("id", userId)
       .single()
 
@@ -33,6 +33,7 @@ export async function GET(request: Request) {
         role: user.role,
         role_id: user.role_id,
         isAdmin: user.role === "ADMIN_TOTAL" || user.role === "ADMIN",
+        avatarUrl: user.avatar_url || null,
       },
     })
   } catch {

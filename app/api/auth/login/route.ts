@@ -93,6 +93,7 @@ export async function POST(request: NextRequest) {
       role: user.role,
       role_id: user.role_id,
       isAdmin: user.role === "ADMIN_TOTAL" || user.role === "ADMIN",
+      avatarUrl: user.avatar_url || null,
     }
 
     const response = NextResponse.json({ user: userData, accessToken })

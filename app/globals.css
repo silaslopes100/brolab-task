@@ -3,7 +3,29 @@
 
 @custom-variant dark (&:is(.dark *));
 
-:root {
+:root,
+body.theme-dark {
+  /* ===== TEMA ESCURO (padrão) ===== */
+  --br-bg: #000000;
+  --br-bg-secondary: #1A1A1A;
+  --br-bg-tertiary: #0A0A0A;
+  --br-hover: #222222;
+  --br-text: #FFFFFF;
+  --br-text-secondary: #888888;
+  --br-accent: #00FF66;
+  --br-accent-strong: #00FF88;
+  --br-accent-muted: #0A2A1A;
+  --br-danger: #FF3333;
+  --br-danger-bg: #1A0000;
+  --br-danger-border: #5A0000;
+  --br-warn: #FF8844;
+  --br-border: #262626;
+  --br-border-strong: #3A3A3A;
+  --br-card: #F3F4F6;
+  --br-card-done: #E5E7EB;
+  --br-overlay: rgba(0, 0, 0, 0.85);
+  --br-shadow: none;
+
   --terminal-green: #00FF66;
   --terminal-green-dim: #00CC52;
   --terminal-black: #000000;
@@ -33,6 +55,110 @@
   --input: #1A1A1A;
   --ring: #00FF66;
   --radius: 0rem;
+}
+
+/* ===== TEMA CLARO CLEAN: branco, verde, preto e cinza ===== */
+body.theme-clean {
+  --br-bg: #FFFFFF;
+  --br-bg-secondary: #FFFFFF;
+  --br-bg-tertiary: #F4F6F5;
+  --br-hover: #F3F4F6;
+  --br-text: #111827;
+  --br-text-secondary: #6B7280;
+  --br-accent: #15803D;
+  --br-accent-strong: #16A34A;
+  --br-accent-muted: #5C8A6E;
+  --br-danger: #DC2626;
+  --br-danger-bg: #FEE2E2;
+  --br-danger-border: #FCA5A5;
+  --br-warn: #B45309;
+  --br-border: #D1D5DB;
+  --br-border-strong: #9CA3AF;
+  --br-card: #F3F4F6;
+  --br-card-done: #E5E7EB;
+  --br-overlay: rgba(17, 24, 39, 0.6);
+  --br-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+
+  --terminal-green: #15803D;
+  --terminal-green-dim: #16A34A;
+  --terminal-black: #FFFFFF;
+  --terminal-gray-dark: #F4F6F5;
+  --terminal-gray: #D1D5DB;
+  --terminal-gray-light: #9CA3AF;
+  --terminal-white: #111827;
+  --terminal-red: #DC2626;
+
+  --background: #FFFFFF;
+  --foreground: #15803D;
+  --card: #FFFFFF;
+  --card-foreground: #111827;
+  --popover: #FFFFFF;
+  --popover-foreground: #111827;
+  --primary: #15803D;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F3F4F6;
+  --secondary-foreground: #111827;
+  --muted: #F3F4F6;
+  --muted-foreground: #6B7280;
+  --accent: #15803D;
+  --accent-foreground: #FFFFFF;
+  --destructive: #DC2626;
+  --destructive-foreground: #FFFFFF;
+  --border: #D1D5DB;
+  --input: #FFFFFF;
+  --ring: #15803D;
+}
+
+/* ===== TEMA CLARO WARM: branco, marrom, bege e preto ===== */
+body.theme-warm {
+  --br-bg: #FDF6EA;
+  --br-bg-secondary: #FFFDF7;
+  --br-bg-tertiary: #F7EFDF;
+  --br-hover: #F1E6D2;
+  --br-text: #2B2118;
+  --br-text-secondary: #8C7B63;
+  --br-accent: #8F5A26;
+  --br-accent-strong: #A5743F;
+  --br-accent-muted: #77664A;
+  --br-danger: #B3261E;
+  --br-danger-bg: #F8E3DB;
+  --br-danger-border: #E0A98F;
+  --br-warn: #A16207;
+  --br-border: #D8C7A9;
+  --br-border-strong: #B3A17F;
+  --br-card: #F1E6D2;
+  --br-card-done: #E4D5BA;
+  --br-overlay: rgba(43, 33, 24, 0.55);
+  --br-shadow: 0 1px 3px rgba(43, 33, 24, 0.14);
+
+  --terminal-green: #8F5A26;
+  --terminal-green-dim: #A5743F;
+  --terminal-black: #FDF6EA;
+  --terminal-gray-dark: #F7EFDF;
+  --terminal-gray: #D8C7A9;
+  --terminal-gray-light: #B3A17F;
+  --terminal-white: #2B2118;
+  --terminal-red: #B3261E;
+
+  --background: #FDF6EA;
+  --foreground: #8F5A26;
+  --card: #FFFDF7;
+  --card-foreground: #2B2118;
+  --popover: #FFFDF7;
+  --popover-foreground: #2B2118;
+  --primary: #8F5A26;
+  --primary-foreground: #FFFDF7;
+  --secondary: #F1E6D2;
+  --secondary-foreground: #2B2118;
+  --muted: #F1E6D2;
+  --muted-foreground: #8C7B63;
+  --accent: #8F5A26;
+  --accent-foreground: #FFFDF7;
+  --destructive: #B3261E;
+  --destructive-foreground: #FFFDF7;
+  --border: #D8C7A9;
+  --input: #FFFDF7;
+  --ring: #8F5A26;
 }
 
 @theme inline {
@@ -75,8 +201,13 @@
     @apply border-border outline-ring/50;
     border-radius: 0 !important;
   }
+  html {
+    background-color: var(--br-bg);
+  }
   body {
-    @apply bg-terminal-black text-terminal-green font-mono;
+    background-color: var(--br-bg);
+    color: var(--br-text);
+    font-family: var(--font-mono), 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
   }
   
   /* Custom scrollbar for terminal feel */
@@ -85,14 +216,14 @@
     height: 8px;
   }
   ::-webkit-scrollbar-track {
-    background: #000000;
+    background: var(--br-bg);
   }
   ::-webkit-scrollbar-thumb {
-    background: #262626;
-    border: 1px solid #00FF66;
+    background: var(--br-border);
+    border: 1px solid var(--br-accent);
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #333333;
+    background: var(--br-border-strong);
   }
   
   /* Remove all rounded corners globally */

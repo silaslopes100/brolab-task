@@ -13,16 +13,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "ERRO: SUPABASE_SERVICE_ROLE_KEY_NAO_CONFIGURADA" }, { status: 500 })
     }
     const { data: existing } = await supabase
-      .from("card_workspace_label")
+      .from("card_labels")
       .select("*")
       .eq("card_id", cardId)
       .eq("label_id", labelId)
       .maybeSingle()
     if (existing) {
-      await supabase.from("card_workspace_label").delete().eq("card_id", cardId).eq("label_id", labelId)
+      await supabase.from("card_labels").delete().eq("card_id", cardId).eq("label_id", labelId)
       return NextResponse.json({ active: false })
     } else {
-      await supabase.from("card_workspace_label").insert({ card_id: cardId, label_id: labelId })
+      await supabase.from("card_labels").insert({ card_id: cardId, label_id: labelId })
       return NextResponse.json({ active: true })
     }
   } catch (err) {

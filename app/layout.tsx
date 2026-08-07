@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { JetBrains_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
+import { ThemeProvider } from '@/components/theme-provider'
 import './globals.css'
 
 const jetbrainsMono = JetBrains_Mono({ 
@@ -50,10 +51,12 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="pt" className="bg-black">
-      <body className={`${jetbrainsMono.variable} font-mono antialiased bg-black text-terminal-green`}>
-        {children}
-        {process.env.NODE_ENV === 'production' && <Analytics />}
+    <html lang="pt">
+      <body className={`${jetbrainsMono.variable} font-mono antialiased`}>
+        <ThemeProvider>
+          {children}
+          {process.env.NODE_ENV === 'production' && <Analytics />}
+        </ThemeProvider>
       </body>
     </html>
   )

@@ -40,12 +40,12 @@ export function ToastContainer() {
           key={t.id}
           className={`border px-4 py-3 text-xs animate-in slide-in-from-right ${
             t.type === "error"
-              ? "border-[#FF3333] bg-[#FF3333]/10 text-[#FF3333]"
+              ? "border-[var(--br-danger)] bg-[var(--br-danger)]/10 text-[var(--br-danger)]"
               : t.type === "warning"
-              ? "border-[#F97316] bg-[#F97316]/10 text-[#F97316]"
+              ? "border-[var(--br-warn)] bg-[var(--br-warn)]/10 text-[var(--br-warn)]"
               : t.type === "success"
-              ? "border-[#00FF66] bg-[#00FF66]/10 text-[#00FF66]"
-              : "border-[#00FF66] bg-black text-[#00FF66]"
+              ? "border-[var(--br-accent)] bg-[var(--br-accent)]/10 text-[var(--br-accent)]"
+              : "border-[var(--br-accent)] bg-[var(--br-bg)] text-[var(--br-accent)]"
           }`}
         >
           {t.message}
