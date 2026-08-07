@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { CreateSubtaskSchema, validate } from "@/lib/validation"
 import { DEFAULT_WORKSPACE_ID } from "@/lib/labels"
 import { getRequestUserId, logActivity } from "@/lib/activities"
+import { dispatchNotification } from "@/lib/notifications"
 
 export async function GET(request: NextRequest) {
   try {
@@ -290,6 +291,13 @@ export async function PATCH(request: NextRequest) {
           task_title: subtaskTitle,
           from_user: "",
           read: false,
+        })
+        dispatchNotification({
+          userId: assigneeId,
+          type: "assignment",
+          message: `Você foi atribuído à subtarefa: ${subtaskTitle}`,
+          taskId: subtaskTaskId,
+          taskTitle: subtaskTitle,
         })
       }
     }

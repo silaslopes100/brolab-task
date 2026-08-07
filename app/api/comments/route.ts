@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { CreateCommentSchema, validate } from "@/lib/validation"
 import { DEFAULT_WORKSPACE_ID } from "@/lib/labels"
 import { logActivity, resolveUserIdByUsername } from "@/lib/activities"
+import { dispatchNotification } from "@/lib/notifications"
 
 export async function POST(request: NextRequest) {
   try {
@@ -48,6 +49,17 @@ export async function POST(request: NextRequest) {
           read: false,
         }))
         await supabase.from('notifications').insert(notifInserts)
+        for (const u of mentionedUsers) {
+          dispatchNotification({
+            userId: u.id,
+            type: "mention",
+            message: `${authorUsername} mencionou você em "${refTitle}"`,
+            taskId: taskId,
+            taskTitle: refTitle,
+            fromUser: authorUsername,
+            commentPreview: content.slice(0, 200),
+          })
+        }
       }
     }
 

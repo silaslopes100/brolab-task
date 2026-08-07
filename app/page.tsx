@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client"
 import { showToast, ToastContainer } from "@/components/toast-notification"
 import { DEFAULT_WORKSPACE_ID } from "@/lib/labels"
 import { useTheme, type ThemeName } from "@/components/theme-provider"
+import { generateTelegramCode, clearTelegramCode, unlinkTelegram } from "@/lib/notifications"
 import {
   DndContext, DragOverlay, closestCorners, closestCenter, KeyboardSensor,
   PointerSensor, TouchSensor, useSensor, useSensors, useDroppable,
@@ -102,6 +103,10 @@ interface TeamMember {
   email: string
   isAdmin: boolean
   avatarUrl?: string | null
+  emailNotificationsEnabled?: boolean
+  telegramNotificationsEnabled?: boolean
+  telegramChatId?: string | null
+  telegramVerificationCode?: string | null
 }
 
 interface Notification {
@@ -412,6 +417,50 @@ function ProfileEditModal({
   const [avatarPreview, setAvatarPreview] = useState<string | null>(user.avatarUrl || null)
   const [uploading, setUploading] = useState(false)
 
+  // Notification settings
+  const [emailNotifications, setEmailNotifications] = useState(user.emailNotificationsEnabled || false)
+  const [telegramNotifications, setTelegramNotifications] = useState(user.telegramNotificationsEnabled || false)
+  const [telegramCode, setTelegramCode] = useState<string | null>(user.telegramVerificationCode || null)
+  const [telegramChatId, setTelegramChatId] = useState<string | null>(user.telegramChatId || null)
+  const [generatingCode, setGeneratingCode] = useState(false)
+  const [unlinkingTelegram, setUnlinkingTelegram] = useState(false)
+
+  const handleGenerateTelegramCode = async () => {
+    setGeneratingCode(true)
+    try {
+      const code = await generateTelegramCode(user.id)
+      if (code) {
+        setTelegramCode(code)
+        showToast("CÓDIGO_GERADO", "success")
+      } else {
+        showToast("ERRO: FALHA_AO_GERAR_CODIGO", "error")
+      }
+    } catch {
+      showToast("ERRO: FALHA_AO_GERAR_CODIGO", "error")
+    } finally {
+      setGeneratingCode(false)
+    }
+  }
+
+  const handleUnlinkTelegram = async () => {
+    setUnlinkingTelegram(true)
+    try {
+      const ok = await unlinkTelegram(user.id)
+      if (ok) {
+        setTelegramChatId(null)
+        setTelegramNotifications(false)
+        setTelegramCode(null)
+        showToast("TELEGRAM_DESVINCULADO", "success")
+      } else {
+        showToast("ERRO: FALHA_AO_DESVINCULAR", "error")
+      }
+    } catch {
+      showToast("ERRO: FALHA_AO_DESVINCULAR", "error")
+    } finally {
+      setUnlinkingTelegram(false)
+    }
+  }
+
   const handleAvatarFile = async (file: File | undefined) => {
     if (!file) return
     if (file.size > 5 * 1024 * 1024) {
@@ -452,6 +501,10 @@ function ProfileEditModal({
       name: name.toUpperCase().replace(/\s+/g, "_"),
       email,
       role: role.toUpperCase().replace(/\s+/g, "_"),
+      emailNotificationsEnabled: emailNotifications,
+      telegramNotificationsEnabled: telegramNotifications,
+      telegramChatId: telegramChatId,
+      telegramVerificationCode: telegramCode,
     }
     if (password) {
       updates.password = password
@@ -538,6 +591,72 @@ function ProfileEditModal({
               className="w-full h-12 px-3 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-text)] text-base focus:border-[var(--br-accent)] focus:outline-none"
             />
           </div>
+
+          {/* NOTIFICATION SETTINGS */}
+          <div className="border-t border-[var(--br-border)] pt-4 mt-2">
+            <div className="text-[var(--br-warn)] font-bold text-xs mb-3">{">"} NOTIFICACOES_EXTERNAS</div>
+
+            <div className="space-y-3">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={emailNotifications}
+                  onChange={(e) => setEmailNotifications(e.target.checked)}
+                  className="w-4 h-4 accent-[var(--br-accent)]"
+                />
+                <span className="text-xs text-[var(--br-text)]">EMAIL ({email})</span>
+              </label>
+
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={telegramNotifications}
+                  onChange={(e) => setTelegramNotifications(e.target.checked)}
+                  className="w-4 h-4 accent-[var(--br-warn)]"
+                />
+                <span className="text-xs text-[var(--br-text)]">TELEGRAM</span>
+              </label>
+
+              {telegramNotifications && (
+                <div className="space-y-2 pl-6 border-l border-[var(--br-border)] ml-2">
+                  {telegramChatId ? (
+                    <div className="text-xs text-[var(--br-success)] flex items-center gap-2">
+                      <span>✓ VINCULADO (chat_id: {telegramChatId})</span>
+                      <button
+                        onClick={handleUnlinkTelegram}
+                        disabled={unlinkingTelegram}
+                        className="ml-2 px-2 py-1 border border-[var(--br-danger)] text-[var(--br-danger)] text-[10px] hover:bg-[var(--br-danger)] hover:text-black transition-colors"
+                      >
+                        [ DESVINCULAR ]
+                      </button>
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="text-xs text-[var(--br-accent)]/70 mb-2">{">"} CODIGO_DE_VERIFICACAO:</div>
+                      <div className="flex items-center gap-2">
+                        <code className="flex-1 text-[11px] text-[var(--br-text)] bg-[var(--br-bg-secondary)] border border-[var(--br-border)] px-2 py-1.5 font-mono break-all">
+                          {telegramCode || "NENHUM"}
+                        </code>
+                        <button
+                          onClick={handleGenerateTelegramCode}
+                          disabled={generatingCode}
+                          className="shrink-0 px-2 py-1.5 border border-[var(--br-warn)] text-[var(--br-warn)] text-[10px] hover:bg-[var(--br-warn)] hover:text-black transition-colors"
+                        >
+                          {generatingCode ? "[ GERANDO... ]" : "[ GERAR_CODIGO ]"}
+                        </button>
+                      </div>
+                      <div className="text-[10px] text-[var(--br-accent)]/50">
+                        1. Abra o Telegram e busque por @{process.env.TELEGRAM_BOT_USERNAME || "BrolabTaskBot"}<br/>
+                        2. Envie <code>/start {telegramCode || "SEU_CODIGO"}</code><br/>
+                        3. Aguarde a confirmação
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
           <div className="text-[var(--br-accent)]/50 text-xs">
             {">"} ROLE_ID: {user.id}
           </div>
@@ -1731,6 +1850,14 @@ interface TaskActivity {
   userAvatarUrl: string | null
 }
 
+interface GitIntegration {
+  id: string
+  provider: string
+  repositoryFullName: string
+  tokenConfigured: boolean
+  createdAt: string
+}
+
 function describeActivity(a: TaskActivity): string {
   const user = a.userName || "Sistema"
   const nv = a.newValue || {}
@@ -1767,6 +1894,10 @@ function describeActivity(a: TaskActivity): string {
       return nv.name
         ? `${user} atribuiu a subtarefa ${subtaskTitle} a ${String(nv.name)}`
         : `${user} removeu o responsável da subtarefa ${subtaskTitle}`
+    case "git_commit":
+      return `Commit ${String(nv.sha || "")}: ${String(nv.message || "")}`
+    case "git_pr":
+      return `PR #${String(nv.number || "")} (${String(nv.state || "")}): ${String(nv.title || "")}`
     default:
       return `${user} executou a ação "${a.action}"`
   }
@@ -1819,6 +1950,237 @@ function ActivityFeed({ taskId }: { taskId: string }) {
   )
 }
 
+// ==================== GIT REFERENCES ====================
+function GitReferences({ taskId }: { taskId: string }) {
+  const [refs, setRefs] = useState<TaskActivity[] | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/tasks/${taskId}/activities`)
+        const data = await res.json().catch(() => ({}))
+        if (!cancelled) {
+          const all: TaskActivity[] = data.activities || []
+          setRefs(all.filter((a) => a.action === "git_commit" || a.action === "git_pr"))
+        }
+      } catch {
+        if (!cancelled) setRefs([])
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [taskId])
+
+  if (refs === null) {
+    return <div className="text-[var(--br-accent)]/50 text-xs">CARREGANDO_REFERENCIAS...</div>
+  }
+
+  if (refs.length === 0) {
+    return <div className="text-[var(--br-accent)]/50 text-xs">NO_GIT_REFERENCES</div>
+  }
+
+  return (
+    <div className="space-y-3">
+      {refs.map((a) => {
+        const nv = a.newValue || {}
+        const isPr = a.action === "git_pr"
+        const url = nv.url ? String(nv.url) : null
+        return (
+          <div key={a.id} className="border border-[var(--br-border)] bg-[var(--br-bg-secondary)] p-3">
+            <div className="flex items-start gap-2">
+              <span className={`shrink-0 px-1.5 py-0.5 text-[10px] font-mono border ${
+                isPr
+                  ? "border-[var(--br-warn)] text-[var(--br-warn)]"
+                  : "border-[var(--br-accent)] text-[var(--br-accent)]"
+              }`}>
+                {isPr ? `PR #${String(nv.number || "")}` : String(nv.sha || "")}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="text-xs text-[var(--br-text)] break-words">{String(nv.title || nv.message || "")}</div>
+                <div className="text-[10px] text-[var(--br-text-secondary)] mt-1">
+                  {isPr
+                    ? `${String(nv.state || "")}${nv.merged ? " (merged)" : ""}`
+                    : `commit em ${String(nv.branch || "")}`}
+                  {nv.repo ? ` · ${String(nv.repo)}` : ""}
+                  {nv.author ? ` · ${String(nv.author)}` : ""}
+                  {" · "}
+                  {new Date(a.createdAt).toLocaleString("pt-BR")}
+                </div>
+              </div>
+              {url && (
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 px-2 py-1 border border-[var(--br-border)] text-[var(--br-accent)] text-[10px] hover:border-[var(--br-accent)] transition-colors"
+                >
+                  [ VER ]
+                </a>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ==================== GIT POWER UP MODAL ====================
+function GitPowerUpModal({ onClose, onChanged }: { onClose: () => void; onChanged?: () => void }) {
+  const [integrations, setIntegrations] = useState<GitIntegration[] | null>(null)
+  const [provider, setProvider] = useState<"github" | "gitlab">("github")
+  const [repo, setRepo] = useState("")
+  const [token, setToken] = useState("")
+  const [error, setError] = useState("")
+
+  const webhookUrl = `${window.location.origin}/api/webhooks/github`
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/git-integrations")
+      const data = await res.json().catch(() => ({ integrations: [] }))
+      setIntegrations(data.integrations || [])
+    } catch {
+      setIntegrations([])
+    }
+  }, [])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  const handleAdd = async () => {
+    setError("")
+    const repoName = repo.trim()
+    if (!repoName) {
+      setError("ERRO: informe o repositório no formato owner/repo")
+      return
+    }
+    try {
+      const res = await fetch("/api/git-integrations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider, repositoryFullName: repoName, accessToken: token.trim() || undefined }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setError(String(data.error || "ERRO: FALHA_AO_VINCULAR_REPOSITORIO"))
+        return
+      }
+      setRepo("")
+      setToken("")
+      await load()
+    } catch {
+      setError("ERRO: FALHA_DE_COMUNICACAO")
+    }
+  }
+
+  const handleRemove = async (id: string) => {
+    try {
+      await fetch(`/api/git-integrations?id=${encodeURIComponent(id)}`, { method: "DELETE" })
+      await load()
+    } catch {
+      setError("ERRO: FALHA_AO_REMOVER")
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-[var(--br-overlay)] z-50 flex items-center justify-center p-4">
+      <div className="border-2 border-[var(--br-accent)] bg-[var(--br-bg)] max-w-lg w-full p-6 max-h-[85vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-5">
+          <div className="text-[var(--br-warn)] font-bold text-sm">{">"} GIT_POWER_UP</div>
+          <button onClick={onClose} className="text-[var(--br-text-secondary)] text-xs border border-[var(--br-border)] px-2 py-1 hover:border-[var(--br-accent)] transition-colors">
+            [ FECHAR ]
+          </button>
+        </div>
+
+        <div className="border border-[var(--br-border)] bg-[var(--br-bg-secondary)] p-4 mb-5">
+          <div className="text-[var(--br-accent)] text-xs mb-2">{">"} WEBHOOK_URL (configurar no GitHub: repo → Settings → Webhooks):</div>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 text-[10px] text-[var(--br-text)] break-all bg-[var(--br-bg)] border border-[var(--br-border)] px-2 py-1.5">
+              {webhookUrl}
+            </code>
+            <button
+              onClick={() => { navigator.clipboard.writeText(webhookUrl).catch(() => {}) }}
+              className="shrink-0 px-2 py-1.5 border border-[var(--br-border)] text-[var(--br-accent)] text-[10px] hover:border-[var(--br-accent)] transition-colors"
+            >
+              [ COPIAR ]
+            </button>
+          </div>
+        </div>
+
+        <div className="border border-[var(--br-border)] p-4 mb-5">
+          <div className="text-[var(--br-accent)] text-xs mb-3">{">"} VINCULAR_REPOSITORIO:</div>
+          <div className="flex items-center gap-2 mb-3">
+            {(["github", "gitlab"] as const).map((p) => (
+              <button
+                key={p}
+                onClick={() => setProvider(p)}
+                className={`h-8 px-3 text-xs border transition-colors ${
+                  provider === p
+                    ? "border-[var(--br-accent)] bg-[var(--br-accent)] text-black font-bold"
+                    : "border-[var(--br-border)] text-[var(--br-text-secondary)] hover:border-[var(--br-accent)]"
+                }`}
+              >
+                {p.toUpperCase()}
+              </button>
+            ))}
+          </div>
+          <input
+            value={repo}
+            onChange={(e) => setRepo(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleAdd() }}
+            placeholder="owner/repo"
+            className="w-full h-10 bg-[var(--br-bg)] border border-[var(--br-border)] px-3 text-xs text-[var(--br-text)] mb-2 focus:outline-none focus:border-[var(--br-accent)]"
+          />
+          <input
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleAdd() }}
+            placeholder="Token (opcional)"
+            type="password"
+            className="w-full h-10 bg-[var(--br-bg)] border border-[var(--br-border)] px-3 text-xs text-[var(--br-text)] mb-3 focus:outline-none focus:border-[var(--br-accent)]"
+          />
+          <button onClick={handleAdd} className="w-full h-10 border border-[var(--br-warn)] text-[var(--br-warn)] text-xs hover:bg-[var(--br-warn)] hover:text-black transition-colors">
+            [ VINCULAR ]
+          </button>
+          {error && <div className="text-[var(--br-danger)] text-[10px] mt-2">{error}</div>}
+        </div>
+
+        <div className="text-[var(--br-accent)] text-xs mb-3">{">"} REPOSITORIOS_VINCULADOS:</div>
+        {integrations === null ? (
+          <div className="text-[var(--br-accent)]/50 text-xs">CARREGANDO...</div>
+        ) : integrations.length === 0 ? (
+          <div className="text-[var(--br-accent)]/50 text-xs">NO_REPOSITORIES</div>
+        ) : (
+          <div className="space-y-2">
+            {integrations.map((i) => (
+              <div key={i.id} className="border border-[var(--br-border)] bg-[var(--br-bg-secondary)] p-3 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-xs text-[var(--br-text)]">
+                    <span className="text-[var(--br-accent)]">{i.provider.toUpperCase()}</span> · {i.repositoryFullName}
+                  </div>
+                  <div className="text-[10px] text-[var(--br-text-secondary)] mt-1">
+                    TOKEN: {i.tokenConfigured ? "CONFIGURADO" : "NAO_CONFIGURADO"}
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleRemove(i.id)}
+                  className="shrink-0 px-2 py-1 border border-[var(--br-danger)] text-[var(--br-danger)] text-[10px] hover:bg-[var(--br-danger)] hover:text-black transition-colors"
+                >
+                  [ REMOVER ]
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ==================== TASK EDIT MODAL ====================
 function TaskEditModal({
   task,
@@ -1862,7 +2224,7 @@ function TaskEditModal({
   const [archiving, setArchiving] = useState(false)
   const [subtasksCollapsed, setSubtasksCollapsed] = useState(false)
   const [focusFlash, setFocusFlash] = useState(false)
-  const [activeTab, setActiveTab] = useState<"details" | "activity">("details")
+  const [activeTab, setActiveTab] = useState<"details" | "activity" | "git">("details")
   const subtasksSectionRef = useRef<HTMLDivElement | null>(null)
   const subtasksScrolledRef = useRef(false)
 
@@ -2150,6 +2512,16 @@ function TaskEditModal({
             >
               [ ATIVIDADE ]
             </button>
+            <button
+              onClick={() => setActiveTab("git")}
+              className={`h-8 px-3 text-xs border transition-colors ${
+                activeTab === "git"
+                  ? "border-[var(--br-accent)] bg-[var(--br-accent)] text-black font-bold"
+                  : "border-[var(--br-border)] text-[var(--br-text-secondary)] hover:border-[var(--br-accent)]"
+              }`}
+            >
+              [ GIT ]
+            </button>
           </div>
 
           {activeTab === "activity" ? (
@@ -2157,6 +2529,13 @@ function TaskEditModal({
               <div className="text-[var(--br-accent)] text-xs mb-3">{">"} HISTORICO_DE_ATIVIDADES:</div>
               <div className="max-h-[55vh] overflow-y-auto pr-1">
                 <ActivityFeed taskId={task.id} />
+              </div>
+            </div>
+          ) : activeTab === "git" ? (
+            <div className="p-4">
+              <div className="text-[var(--br-accent)] text-xs mb-3">{">"} COMMITS_E_PRS_REFERENCIADOS (via #&lt;taskId&gt;):</div>
+              <div className="max-h-[55vh] overflow-y-auto pr-1">
+                <GitReferences taskId={task.id} />
               </div>
             </div>
           ) : (
@@ -3092,6 +3471,7 @@ function Header({
   onToggleTeam,
   onToggleNotifications,
   onEditProfile,
+  onToggleGitPowerUp,
   showTeam,
 }: {
   currentUser: TeamMember
@@ -3100,6 +3480,7 @@ function Header({
   onToggleTeam: () => void
   onToggleNotifications: () => void
   onEditProfile: () => void
+  onToggleGitPowerUp: () => void
   showTeam: boolean
 }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -3144,6 +3525,13 @@ function Header({
               className="h-10 px-3 border border-[var(--br-border)] text-[var(--br-accent)] text-xs hover:border-[var(--br-accent)] transition-colors"
             >
               [ EDIT_PROFILE ]
+            </button>
+
+            <button
+              onClick={onToggleGitPowerUp}
+              className="h-10 px-3 border border-[var(--br-border)] text-[var(--br-warn)] text-xs hover:border-[var(--br-warn)] transition-colors"
+            >
+              [ GIT_POWER_UP ]
             </button>
 
             <div className="h-10 flex items-center gap-1 border border-[var(--br-border)] px-1" title="Tema da interface">
@@ -3200,6 +3588,8 @@ function Header({
             </div>
             <button onClick={onEditProfile}
               className="w-full h-10 border border-[var(--br-border)] text-[var(--br-accent)] text-xs hover:border-[var(--br-accent)] transition-colors">[ EDIT_PROFILE ]</button>
+            <button onClick={onToggleGitPowerUp}
+              className="w-full h-10 border border-[var(--br-border)] text-[var(--br-warn)] text-xs hover:border-[var(--br-warn)] transition-colors">[ GIT_POWER_UP ]</button>
             <div className="flex items-center gap-2 border border-[var(--br-border)] px-2 h-10">
               <span className="text-[var(--br-text-secondary)] text-[10px]">TEMA:</span>
               <select
@@ -3499,6 +3889,7 @@ function KanbanBoard({
   const [showTeamModal, setShowTeamModal] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
   const [showProfileEdit, setShowProfileEdit] = useState(false)
+  const [showGitPowerUp, setShowGitPowerUp] = useState(false)
   const [showNewColumnForm, setShowNewColumnForm] = useState(false)
   const [editingTask, setEditingTask] = useState<{
     task: Task
@@ -3735,6 +4126,7 @@ function KanbanBoard({
         onToggleTeam={() => setShowTeamModal(!showTeamModal)}
         onToggleNotifications={() => setShowNotifications(!showNotifications)}
         onEditProfile={() => setShowProfileEdit(true)}
+        onToggleGitPowerUp={() => setShowGitPowerUp(true)}
         showTeam={showTeamModal}
       />
 
@@ -3764,6 +4156,13 @@ function KanbanBoard({
           onClose={() => setShowProfileEdit(false)}
           onSave={onUpdateUser}
           onAvatarUpdated={onAvatarUpdated}
+        />
+      )}
+
+      {showGitPowerUp && (
+        <GitPowerUpModal
+          onClose={() => setShowGitPowerUp(false)}
+          onChanged={refreshData}
         />
       )}
 

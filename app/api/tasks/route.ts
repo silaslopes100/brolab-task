@@ -5,6 +5,7 @@ import { CreateTaskSchema, UpdateTaskSchema, validate } from "@/lib/validation"
 import { DEFAULT_WORKSPACE_ID } from "@/lib/labels"
 import { createTodoistTask, mapTodoistPriority } from "@/lib/todoist"
 import { getRequestUserId, logActivity } from "@/lib/activities"
+import { dispatchNotification } from "@/lib/notifications"
 
 const BUCKET_NAME = "task-files"
 
@@ -306,6 +307,13 @@ export async function POST(request: NextRequest) {
           from_user: "",
           read: false,
         })
+        dispatchNotification({
+          userId: assigneeId,
+          type: "assignment",
+          message: `Você foi atribuído à tarefa: ${task.title}`,
+          taskId: task.id,
+          taskTitle: task.title,
+        })
       }
 
       // Integração Todoist: criação assíncrona, não bloqueia o fluxo principal
@@ -357,6 +365,15 @@ export async function POST(request: NextRequest) {
         read: false,
       }))
       await supabase.from('notifications').insert(notifInserts)
+      for (const u of allUsers) {
+        dispatchNotification({
+          userId: u.id,
+          type: "task_created",
+          message: `Nova tarefa criada: ${task.title}`,
+          taskId: task.id,
+          taskTitle: task.title,
+        })
+      }
     }
 
     return NextResponse.json({
@@ -560,6 +577,13 @@ export async function PATCH(request: NextRequest) {
           task_title: currentTitle,
           from_user: "",
           read: false,
+        })
+        dispatchNotification({
+          userId: assigneeId,
+          type: "assignment",
+          message: `Você foi atribuído à tarefa: ${currentTitle}`,
+          taskId: id,
+          taskTitle: currentTitle,
         })
       }
 
