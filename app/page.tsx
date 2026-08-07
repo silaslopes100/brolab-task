@@ -2463,10 +2463,9 @@ function TaskEditModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-[var(--br-bg)] z-50 overflow-y-auto">
-      <div className="min-h-screen p-4">
-        <div className="border-2 border-[var(--br-accent)] bg-[var(--br-bg)] max-w-3xl mx-auto">
-          <div className="border-b border-[var(--br-accent)] p-4 flex justify-between items-center sticky top-0 bg-[var(--br-bg)] z-10">
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-2 md:p-4">
+      <div className="w-full max-w-[1100px] max-h-[95vh] flex flex-col bg-[var(--br-bg)] border border-[var(--br-border-strong)] rounded-xl shadow-2xl overflow-hidden mx-auto">
+          <div className="border-b border-[var(--br-border)] p-4 flex justify-between items-center bg-[var(--br-bg)] z-10 shrink-0">
             <span className="text-[var(--br-accent)] font-bold">{">"} EDIT_TASK</span>
             <div className="flex gap-2">
               <button
@@ -2491,10 +2490,12 @@ function TaskEditModal({
             </div>
           </div>
 
-          <div className="flex gap-1 px-4 pt-3 border-b border-[var(--br-border)]">
+          <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
+            <div className="flex-1 overflow-y-auto flex flex-col lg:border-r border-[var(--br-border)]">
+              <div className="flex gap-1 px-4 pt-3 border-b border-[var(--br-border)] shrink-0">
             <button
               onClick={() => setActiveTab("details")}
-              className={`h-8 px-3 text-xs border transition-colors ${
+              className={`h-8 px-3 text-xs border-t border-l border-r rounded-t-md transition-colors ${
                 activeTab === "details"
                   ? "border-[var(--br-accent)] bg-[var(--br-accent)] text-black font-bold"
                   : "border-[var(--br-border)] text-[var(--br-text-secondary)] hover:border-[var(--br-accent)]"
@@ -2504,7 +2505,7 @@ function TaskEditModal({
             </button>
             <button
               onClick={() => setActiveTab("activity")}
-              className={`h-8 px-3 text-xs border transition-colors ${
+              className={`h-8 px-3 text-xs border-t border-l border-r rounded-t-md transition-colors ${
                 activeTab === "activity"
                   ? "border-[var(--br-accent)] bg-[var(--br-accent)] text-black font-bold"
                   : "border-[var(--br-border)] text-[var(--br-text-secondary)] hover:border-[var(--br-accent)]"
@@ -2514,7 +2515,7 @@ function TaskEditModal({
             </button>
             <button
               onClick={() => setActiveTab("git")}
-              className={`h-8 px-3 text-xs border transition-colors ${
+              className={`h-8 px-3 text-xs border-t border-l border-r rounded-t-md transition-colors ${
                 activeTab === "git"
                   ? "border-[var(--br-accent)] bg-[var(--br-accent)] text-black font-bold"
                   : "border-[var(--br-border)] text-[var(--br-text-secondary)] hover:border-[var(--br-accent)]"
@@ -2605,70 +2606,8 @@ function TaskEditModal({
               )}
             </div>
 
-            <div>
-              <div className="text-[var(--br-accent)] text-xs mb-2">{">"} ASSIGNEES:</div>
-              <div className="flex flex-wrap gap-2">
-                {team.map((member) => (
-                  <button
-                    key={member.id}
-                    onClick={() => toggleAssignee(member.name)}
-                    className={`px-3 py-2 border text-xs transition-colors ${
-                      assignees.includes(member.name)
-                        ? "border-[var(--br-accent)] bg-[var(--br-accent)] text-black"
-                        : "border-[var(--br-border)] text-[var(--br-text)] hover:border-[var(--br-accent)]"
-                    }`}
-                  >
-                    @{member.username}
-                  </button>
-                ))}
-              </div>
-            </div>
 
-            <div>
-              <div className="text-[var(--br-accent)] text-xs mb-2">{">"} RESPONSAVEL:</div>
-              <div className="flex items-center gap-2">
-                <MemberAvatar
-                  name={team.find((m) => m.id === taskAssigneeId)?.name || "—"}
-                  url={team.find((m) => m.id === taskAssigneeId)?.avatarUrl || null}
-                  size={24}
-                />
-                <SubtaskAssigneeSelect
-                  value={taskAssigneeId}
-                  team={team}
-                  onChange={handleTaskAssigneeChange}
-                />
-                {taskAssigneeId && (
-                  <button
-                    onClick={() => handleTaskAssigneeChange(null)}
-                    className="px-2 py-1 border border-[var(--br-border)] text-[var(--br-text-secondary)] text-[10px] hover:border-[var(--br-danger)] hover:text-[var(--br-danger)] transition-colors"
-                    title="Remover responsável"
-                  >
-                    [ REMOVER ]
-                  </button>
-                )}
-              </div>
-            </div>
 
-            <LabelManager
-              labels={labels}
-              onRemove={(id) => setLabels(labels.filter((l) => l.id !== id))}
-              workspaceLabels={workspaceLabels}
-              onToggleWorkspaceLabel={async (labelId) => {
-                await fetch("/api/workspace-labels/toggle", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ cardId: task.id, labelId }),
-                })
-                const label = workspaceLabels.find(l => l.id === labelId)
-                if (!label) return
-                const exists = labels.some(l => l.id === labelId)
-                if (exists) {
-                  setLabels(labels.filter(l => l.id !== labelId))
-                } else {
-                  setLabels([...labels, label])
-                }
-              }}
-            />
 
             <div
               ref={subtasksSectionRef}
@@ -2833,40 +2772,6 @@ function TaskEditModal({
                 onSubmit={handleAddComment} team={team} placeholder="Digite seu comentário..." />
             </div>
 
-            <div className="flex items-center justify-between">
-              <div className="text-[var(--br-accent)]/50 text-xs">
-                {">"} CREATED: {new Date(task.createdAt).toLocaleString("pt-BR")} | ID: {task.id.slice(0, 8)}...
-              </div>
-              {!confirmArchive ? (
-                <button
-                  onClick={() => setConfirmArchive(true)}
-                  className="flex items-center gap-1 px-2 py-1 text-[10px] border border-[var(--br-border)] rounded text-[var(--br-text-secondary)] hover:border-[#ffcc00] hover:text-[#ffcc00] transition-all"
-                >
-                  🗄 arquivar
-                </button>
-              ) : (
-                <div className="flex items-center gap-1">
-                  <span className="text-[10px] text-[#ffcc00]">Confirmar?</span>
-                  <button
-                    onClick={async () => {
-                      setArchiving(true)
-                      await fetch(`/api/cards/${task.id}/archive`, { method: "POST" })
-                      onClose()
-                    }}
-                    disabled={archiving}
-                    className="px-2 py-1 bg-[#ffcc00] text-[#0a0a0a] text-[10px] rounded font-bold hover:bg-[#e6b800] transition-colors"
-                  >
-                    sim
-                  </button>
-                  <button
-                    onClick={() => setConfirmArchive(false)}
-                    className="px-2 py-1 border border-[var(--br-border)] text-[var(--br-text-secondary)] text-[10px] rounded hover:border-[var(--br-accent)] transition-colors"
-                  >
-                    não
-                  </button>
-                </div>
-              )}
-            </div>
           </div>
           )}
         </div>
@@ -2928,7 +2833,7 @@ function SortableTaskCard({
       style={cover
         ? { ...style, backgroundImage: `url("${task.coverImageUrl}")`, backgroundSize: "cover", backgroundPosition: "center" }
         : style}
-      className={`border p-3 cursor-pointer transition-colors relative overflow-hidden ${
+      className={`border p-3 rounded-md shadow-sm cursor-pointer transition-all hover:shadow-md relative overflow-hidden ${
         task.isComplete
           ? "bg-[var(--br-accent-strong)] border-[var(--br-accent-strong)]"
           : "border-[var(--br-border)] bg-[var(--br-bg-secondary)] hover:border-[var(--br-accent)]/50"
@@ -3187,7 +3092,7 @@ function NewTaskModal({
   return (
     <div className="fixed inset-0 bg-[var(--br-overlay)] z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="border-2 border-[var(--br-accent)] bg-[var(--br-bg)] max-w-md w-full p-5"
+        className="border border-[var(--br-border-strong)] rounded-lg shadow-xl bg-[var(--br-bg)] max-w-md w-full p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
@@ -3339,7 +3244,7 @@ function KanbanColumn({
   }
 
   return (
-    <div className="flex-shrink-0 w-72 md:w-80 border border-[var(--br-border)] bg-[var(--br-bg)] flex flex-col max-h-full">
+    <div className="flex-shrink-0 min-w-[280px] w-[280px] md:w-[300px] lg:w-[320px] rounded-md shadow-sm border border-[var(--br-border)] bg-[var(--br-bg)] flex flex-col max-h-full overflow-hidden">
       <div className="border-b border-[var(--br-border)] p-3 flex items-center justify-between bg-[var(--br-bg-secondary)]">
         <div className="flex items-center gap-2 min-w-0 flex-1">
           {editingName ? (
@@ -3434,7 +3339,7 @@ function NewColumnForm({
   const [title, setTitle] = useState("")
 
   return (
-    <div className="flex-shrink-0 w-72 md:w-80 border border-[var(--br-accent)] p-4 bg-[var(--br-bg)]">
+    <div className="flex-shrink-0 min-w-[280px] w-[280px] md:w-[300px] lg:w-[320px] rounded-md border border-[var(--br-accent)] p-4 bg-[var(--br-bg)] shadow-md">
       <div className="text-[var(--br-accent)] text-xs mb-3">{">"} NEW_COLUMN</div>
       <input
         type="text"
@@ -4440,7 +4345,7 @@ function KanbanBoard({
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
           >
-            <div className="flex gap-4 overflow-x-auto pb-4 h-[calc(100vh-200px)] md:h-[calc(100vh-180px)]">
+            <div className="flex gap-4 overflow-x-auto pb-6 pt-2 px-2 items-start h-[calc(100vh-200px)] md:h-[calc(100vh-180px)] scroll-smooth">
               {filteredColumns.map((column, index) => (
                 <KanbanColumn
                   key={column.id}
@@ -4477,7 +4382,7 @@ function KanbanBoard({
             ) : (
               <button
                 onClick={() => setShowNewColumnForm(true)}
-                className="flex-shrink-0 w-72 md:w-80 h-16 border border-dashed border-[var(--br-border)] text-[var(--br-accent)]/50 text-xs hover:border-[var(--br-accent)] hover:text-[var(--br-accent)] transition-colors flex items-center justify-center"
+                className="flex-shrink-0 min-w-[280px] w-[280px] md:w-[300px] lg:w-[320px] h-16 rounded-md border border-dashed border-[var(--br-border)] text-[var(--br-accent)]/50 text-xs hover:border-[var(--br-accent)] hover:text-[var(--br-accent)] transition-colors flex items-center justify-center"
               >
                 [ + NEW COLUMN ]
               </button>
