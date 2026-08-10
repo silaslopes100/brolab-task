@@ -2783,10 +2783,6 @@ function TaskEditModal({
               <MentionInput value={newComment} onChange={setNewComment}
                 onSubmit={handleAddComment} team={team} placeholder="Digite seu coment├írio..." />
             </div>
-                </div>
-              )}
-            </div>
-          </div>
 
             <div className="flex items-center justify-between">
               <div className="text-[var(--br-accent)]/50 text-xs">
@@ -2822,7 +2818,8 @@ function TaskEditModal({
                 </div>
               )}
             </div>
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
