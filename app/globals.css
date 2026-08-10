@@ -251,6 +251,46 @@ body.theme-warm {
   animation: blink 1s infinite;
 }
 
+/* ===== MOBILE (<= 768px): alvos de toque >= 48px ===== */
+@media (max-width: 768px) {
+  .br-header button,
+  .br-header select {
+    height: 48px;
+    min-width: 44px;
+  }
+
+  .br-toolbar button,
+  .br-toolbar select,
+  .br-toolbar input {
+    height: 48px;
+  }
+  .br-toolbar button {
+    min-width: 44px;
+  }
+
+  .br-card-actions button {
+    min-height: 48px;
+    min-width: 44px;
+  }
+  .br-card-actions .br-card-vertical button {
+    height: 48px;
+    width: 48px;
+  }
+
+  .br-modal button,
+  .br-modal select,
+  .br-modal input,
+  .br-modal textarea {
+    min-height: 48px;
+    min-width: 44px;
+  }
+
+  /* Evita zoom acidental ao tocar duas vezes em controles */
+  button, select, input, textarea {
+    touch-action: manipulation;
+  }
+}
+
 /* Scanline effect for extra terminal feel */
 .scanlines::before {
   content: "";
