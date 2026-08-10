@@ -16,6 +16,7 @@ import {
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import PushToggle from "@/components/push-toggle"
+import ReportsModal from "@/components/reports-modal"
 
 // ==================== TYPES ====================
 interface Label {
@@ -3418,6 +3419,7 @@ function Header({
   onToggleNotifications,
   onEditProfile,
   onToggleGitPowerUp,
+  onToggleReports,
   showTeam,
 }: {
   currentUser: TeamMember
@@ -3427,6 +3429,7 @@ function Header({
   onToggleNotifications: () => void
   onEditProfile: () => void
   onToggleGitPowerUp: () => void
+  onToggleReports: () => void
   showTeam: boolean
 }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -3480,6 +3483,13 @@ function Header({
               className="h-10 px-3 border border-[var(--br-border)] text-[var(--br-warn)] text-xs hover:border-[var(--br-warn)] transition-colors"
             >
               [ GIT_POWER_UP ]
+            </button>
+
+            <button
+              onClick={onToggleReports}
+              className="h-10 px-3 border border-[var(--br-border)] text-[var(--br-accent)] text-xs hover:border-[var(--br-accent)] transition-colors"
+            >
+              [ RELATORIOS ]
             </button>
 
             <div className="h-10 flex items-center gap-1 border border-[var(--br-border)] px-1" title="Tema da interface">
@@ -3556,6 +3566,8 @@ function Header({
                   ? "border-[var(--br-accent)] bg-[var(--br-accent)] text-black"
                   : "border-[var(--br-accent)] bg-[var(--br-bg)] text-[var(--br-accent)] hover:bg-[var(--br-border)]"
               }`}>[ VIEW_TEAM ]</button>
+            <button onClick={onToggleReports}
+              className="w-full h-10 border border-[var(--br-border)] text-[var(--br-accent)] text-xs hover:border-[var(--br-accent)] transition-colors">[ RELATORIOS ]</button>
             <div className="w-full">
               <PushToggle />
             </div>
@@ -3841,6 +3853,7 @@ function KanbanBoard({
   const [showNotifications, setShowNotifications] = useState(false)
   const [showProfileEdit, setShowProfileEdit] = useState(false)
   const [showGitPowerUp, setShowGitPowerUp] = useState(false)
+  const [showReports, setShowReports] = useState(false)
   const [showNewColumnForm, setShowNewColumnForm] = useState(false)
   const [editingTask, setEditingTask] = useState<{
     task: Task
@@ -4078,6 +4091,7 @@ function KanbanBoard({
         onToggleNotifications={() => setShowNotifications(!showNotifications)}
         onEditProfile={() => setShowProfileEdit(true)}
         onToggleGitPowerUp={() => setShowGitPowerUp(true)}
+        onToggleReports={() => setShowReports(true)}
         showTeam={showTeamModal}
       />
 
@@ -4116,6 +4130,8 @@ function KanbanBoard({
           onChanged={refreshData}
         />
       )}
+
+      {showReports && <ReportsModal onClose={() => setShowReports(false)} />}
 
       {coverTask && (
         <CoverPickerModal
