@@ -35,7 +35,7 @@ export default function TaskLinkPage() {
           }
         }
       } catch {
-        // fallback abaixo
+        // fallback abaixo!
       }
       router.replace("/")
     }

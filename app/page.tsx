@@ -2417,12 +2417,12 @@ function TaskEditModal({
   }
 
   return (
-    <div className="br-modal fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4">
-      <div className="absolute inset-0 bg-[var(--br-overlay)]" onClick={onClose} />
-      <div className="relative flex flex-col w-full max-w-[800px] max-h-full sm:max-h-[92vh] h-full sm:h-auto border-2 border-[var(--br-accent)] bg-[var(--br-bg)] overflow-hidden">
-          <div className="border-b border-[var(--br-accent)] p-3 sm:p-4 flex justify-between items-center gap-2 shrink-0">
-            <span className="text-[var(--br-accent)] font-bold truncate">{">"} EDIT_TASK</span>
-            <div className="flex gap-2 shrink-0">
+    <div className="fixed inset-0 bg-[var(--br-bg)] z-50 overflow-y-auto">
+      <div className="min-h-screen p-4">
+        <div className="border-2 border-[var(--br-accent)] bg-[var(--br-bg)] max-w-3xl mx-auto">
+          <div className="border-b border-[var(--br-accent)] p-4 flex justify-between items-center sticky top-0 bg-[var(--br-bg)] z-10">
+            <span className="text-[var(--br-accent)] font-bold">{">"} EDIT_TASK</span>
+            <div className="flex gap-2">
               <button
                 onClick={copyLink}
                 title="Copiar link de compartilhamento da tarefa"
@@ -2445,8 +2445,55 @@ function TaskEditModal({
             </div>
           </div>
 
-        <div className="flex flex-col md:flex-row flex-1 min-h-0">
-          <div className="flex-1 min-w-0 overflow-y-auto p-4 space-y-6">
+          <div className="flex gap-1 px-4 pt-3 border-b border-[var(--br-border)]">
+            <button
+              onClick={() => setActiveTab("details")}
+              className={`h-8 px-3 text-xs border transition-colors ${
+                activeTab === "details"
+                  ? "border-[var(--br-accent)] bg-[var(--br-accent)] text-black font-bold"
+                  : "border-[var(--br-border)] text-[var(--br-text-secondary)] hover:border-[var(--br-accent)]"
+              }`}
+            >
+              [ DETALHES ]
+            </button>
+            <button
+              onClick={() => setActiveTab("activity")}
+              className={`h-8 px-3 text-xs border transition-colors ${
+                activeTab === "activity"
+                  ? "border-[var(--br-accent)] bg-[var(--br-accent)] text-black font-bold"
+                  : "border-[var(--br-border)] text-[var(--br-text-secondary)] hover:border-[var(--br-accent)]"
+              }`}
+            >
+              [ ATIVIDADE ]
+            </button>
+            <button
+              onClick={() => setActiveTab("git")}
+              className={`h-8 px-3 text-xs border transition-colors ${
+                activeTab === "git"
+                  ? "border-[var(--br-accent)] bg-[var(--br-accent)] text-black font-bold"
+                  : "border-[var(--br-border)] text-[var(--br-text-secondary)] hover:border-[var(--br-accent)]"
+              }`}
+            >
+              [ GIT ]
+            </button>
+          </div>
+
+          {activeTab === "activity" ? (
+            <div className="p-4">
+              <div className="text-[var(--br-accent)] text-xs mb-3">{">"} HISTORICO_DE_ATIVIDADES:</div>
+              <div className="max-h-[55vh] overflow-y-auto pr-1">
+                <ActivityFeed taskId={task.id} />
+              </div>
+            </div>
+          ) : activeTab === "git" ? (
+            <div className="p-4">
+              <div className="text-[var(--br-accent)] text-xs mb-3">{">"} COMMITS_E_PRS_REFERENCIADOS (via #&lt;taskId&gt;):</div>
+              <div className="max-h-[55vh] overflow-y-auto pr-1">
+                <GitReferences taskId={task.id} />
+              </div>
+            </div>
+          ) : (
+          <div className="p-4 space-y-6">
             <div>
               <div className="text-[var(--br-accent)] text-xs mb-2">{">"} TITLE:</div>
               <input
@@ -2456,8 +2503,7 @@ function TaskEditModal({
                 className="w-full h-12 px-3 bg-[var(--br-bg-secondary)] border border-[var(--br-border)] text-[var(--br-text)] text-base focus:border-[var(--br-accent)] focus:outline-none"
               />
             </div>
-
-            <div>
+<div>
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <div className="text-[var(--br-accent)] text-xs">{">"} DESCRIPTION:</div>
@@ -2465,7 +2511,7 @@ function TaskEditModal({
                     <span className="text-[10px] text-[var(--br-warn)] animate-pulse">SALVANDO...</span>
                   )}
                   {descSaveState === "saved" && (
-                    <span className="text-[10px] text-[var(--br-accent)]">✓ SALVO</span>
+                    <span className="text-[10px] text-[var(--br-accent)]">Ô£ô SALVO</span>
                   )}
                 </div>
                 <div className="flex items-center gap-2">
@@ -2475,18 +2521,18 @@ function TaskEditModal({
                     className="flex items-center gap-1 px-2 py-1 text-[10px] border border-[var(--br-border)] rounded hover:border-[var(--br-accent-strong)] hover:text-[var(--br-accent-strong)] text-[var(--br-text-secondary)] transition-all disabled:opacity-40"
                   >
                     {improving ? (
-                      <span className="animate-pulse">✦ melhorando...</span>
+                      <span className="animate-pulse">Ô£ª melhorando...</span>
                     ) : (
-                      <>✦ melhorar com IA</>
+                      <>Ô£ª melhorar com IA</>
                     )}
                   </button>
                   {!descEditing && (
                     <button
                       onClick={() => setDescEditing(true)}
-                      title="Editar descrição"
+                      title="Editar descri├º├úo"
                       className="w-6 h-6 flex items-center justify-center border border-[var(--br-border)] text-[var(--br-accent)]/60 hover:border-[var(--br-accent)] hover:text-[var(--br-accent)] transition-colors text-xs"
                     >
-                      ✎
+                      Ô£Ä
                     </button>
                   )}
                 </div>
@@ -2512,6 +2558,71 @@ function TaskEditModal({
               )}
             </div>
 
+            <div>
+              <div className="text-[var(--br-accent)] text-xs mb-2">{">"} ASSIGNEES:</div>
+              <div className="flex flex-wrap gap-2">
+                {team.map((member) => (
+                  <button
+                    key={member.id}
+                    onClick={() => toggleAssignee(member.name)}
+                    className={`px-3 py-2 border text-xs transition-colors ${
+                      assignees.includes(member.name)
+                        ? "border-[var(--br-accent)] bg-[var(--br-accent)] text-black"
+                        : "border-[var(--br-border)] text-[var(--br-text)] hover:border-[var(--br-accent)]"
+                    }`}
+                  >
+                    @{member.username}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-[var(--br-accent)] text-xs mb-2">{">"} RESPONSAVEL:</div>
+              <div className="flex items-center gap-2">
+                <MemberAvatar
+                  name={team.find((m) => m.id === taskAssigneeId)?.name || "—"}
+                  url={team.find((m) => m.id === taskAssigneeId)?.avatarUrl || null}
+                  size={24}
+                />
+                <SubtaskAssigneeSelect
+                  value={taskAssigneeId}
+                  team={team}
+                  onChange={handleTaskAssigneeChange}
+                />
+                {taskAssigneeId && (
+                  <button
+                    onClick={() => handleTaskAssigneeChange(null)}
+                    className="px-2 py-1 border border-[var(--br-border)] text-[var(--br-text-secondary)] text-[10px] hover:border-[var(--br-danger)] hover:text-[var(--br-danger)] transition-colors"
+                    title="Remover responsável"
+                  >
+                    [ REMOVER ]
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <LabelManager
+              labels={labels}
+              onRemove={(id) => setLabels(labels.filter((l) => l.id !== id))}
+              workspaceLabels={workspaceLabels}
+              onToggleWorkspaceLabel={async (labelId) => {
+                await fetch("/api/workspace-labels/toggle", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ cardId: task.id, labelId }),
+                })
+                const label = workspaceLabels.find(l => l.id === labelId)
+                if (!label) return
+                const exists = labels.some(l => l.id === labelId)
+                if (exists) {
+                  setLabels(labels.filter(l => l.id !== labelId))
+                } else {
+                  setLabels([...labels, label])
+                }
+              }}
+            />
+
             <div
               ref={subtasksSectionRef}
               className={`transition-colors ${focusFlash ? "border border-[var(--br-accent)] p-2" : ""}`}
@@ -2522,7 +2633,7 @@ function TaskEditModal({
                   className="text-[var(--br-accent)] text-xs hover:text-[var(--br-accent)]/70 transition-colors"
                   title={subtasksCollapsed ? "Expandir subtarefas" : "Recolher subtarefas"}
                 >
-                  {">"} SUBTASKS: {subtasksCollapsed ? "[ ▼ ]" : "[ ▲ ]"}
+                  {">"} SUBTASKS: {subtasksCollapsed ? "[ Ôû╝ ]" : "[ Ôû▓ ]"}
                 </button>
                 <div className="text-[var(--br-accent)]/50 text-[10px]">
                   EST: {totalEstimatedHours}h | REAL: {formatTime(totalTimeSpent)}
@@ -2590,8 +2701,7 @@ function TaskEditModal({
                 </>
               )}
             </div>
-
-            <div>
+<div>
               <div className="text-[var(--br-accent)] text-xs mb-2">{">"} FILES:</div>
               <div className="space-y-2 mb-3">
                 {task.files.length === 0 ? (
@@ -2627,8 +2737,7 @@ function TaskEditModal({
                   }} />
               </label>
             </div>
-
-            <div className="border border-[var(--br-border)] p-3">
+<div className="border border-[var(--br-border)] p-3">
               <div className="text-[var(--br-accent)] text-xs mb-3">{">"} COMMENT_HISTORY:</div>
               <div className="space-y-3 mb-4 max-h-60 overflow-y-auto">
                 {task.comments.length === 0 ? (
@@ -2672,164 +2781,55 @@ function TaskEditModal({
 
               <div className="text-[var(--br-accent)] text-xs mb-2">{">"} NEW_COMMENT (use @ para mencionar):</div>
               <MentionInput value={newComment} onChange={setNewComment}
-                onSubmit={handleAddComment} team={team} placeholder="Digite seu comentário..." />
+                onSubmit={handleAddComment} team={team} placeholder="Digite seu coment├írio..." />
             </div>
-
-            </div>
-          <div className="shrink-0 md:w-72 border-t md:border-t-0 md:border-l border-[var(--br-border)] flex flex-col min-h-0 max-h-[45vh] md:max-h-none">
-            <div className="flex gap-1 p-3 pb-2 border-b border-[var(--br-border)] shrink-0 overflow-x-auto">
-              <button
-                onClick={() => setActiveTab("details")}
-                className={`h-8 px-3 text-xs border transition-colors whitespace-nowrap ${
-                  activeTab === "details"
-                    ? "border-[var(--br-accent)] bg-[var(--br-accent)] text-black font-bold"
-                    : "border-[var(--br-border)] text-[var(--br-text-secondary)] hover:border-[var(--br-accent)]"
-                }`}
-              >
-                [ DETALHES ]
-              </button>
-              <button
-                onClick={() => setActiveTab("activity")}
-                className={`h-8 px-3 text-xs border transition-colors whitespace-nowrap ${
-                  activeTab === "activity"
-                    ? "border-[var(--br-accent)] bg-[var(--br-accent)] text-black font-bold"
-                    : "border-[var(--br-border)] text-[var(--br-text-secondary)] hover:border-[var(--br-accent)]"
-                }`}
-              >
-                [ ATIVIDADE ]
-              </button>
-              <button
-                onClick={() => setActiveTab("git")}
-                className={`h-8 px-3 text-xs border transition-colors whitespace-nowrap ${
-                  activeTab === "git"
-                    ? "border-[var(--br-accent)] bg-[var(--br-accent)] text-black font-bold"
-                    : "border-[var(--br-border)] text-[var(--br-text-secondary)] hover:border-[var(--br-accent)]"
-                }`}
-              >
-                [ GIT ]
-              </button>
-            </div>
-            <div className="flex-1 min-h-0 overflow-y-auto p-3">
-              {activeTab === "activity" ? (
-                <div>
-                  <div className="text-[var(--br-accent)] text-xs mb-3">{">"} HISTORICO_DE_ATIVIDADES:</div>
-                  <ActivityFeed taskId={task.id} />
-                </div>
-              ) : activeTab === "git" ? (
-                <div>
-                  <div className="text-[var(--br-accent)] text-xs mb-3">{">"} COMMITS_E_PRS_REFERENCIADOS (via #&lt;taskId&gt;):</div>
-                  <GitReferences taskId={task.id} />
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div>
-                    <div className="text-[var(--br-accent)] text-xs mb-2">{">"} ASSIGNEES:</div>
-                    <div className="flex flex-wrap gap-2">
-                      {team.map((member) => (
-                        <button
-                          key={member.id}
-                          onClick={() => toggleAssignee(member.name)}
-                          className={`px-3 py-2 border text-xs transition-colors ${
-                            assignees.includes(member.name)
-                              ? "border-[var(--br-accent)] bg-[var(--br-accent)] text-black"
-                              : "border-[var(--br-border)] text-[var(--br-text)] hover:border-[var(--br-accent)]"
-                          }`}
-                        >
-                          @{member.username}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="text-[var(--br-accent)] text-xs mb-2">{">"} RESPONSAVEL:</div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <MemberAvatar
-                        name={team.find((m) => m.id === taskAssigneeId)?.name || "—"}
-                        url={team.find((m) => m.id === taskAssigneeId)?.avatarUrl || null}
-                        size={24}
-                      />
-                      <SubtaskAssigneeSelect
-                        value={taskAssigneeId}
-                        team={team}
-                        onChange={handleTaskAssigneeChange}
-                      />
-                      {taskAssigneeId && (
-                        <button
-                          onClick={() => handleTaskAssigneeChange(null)}
-                          className="px-2 py-1 border border-[var(--br-border)] text-[var(--br-text-secondary)] text-[10px] hover:border-[var(--br-danger)] hover:text-[var(--br-danger)] transition-colors"
-                          title="Remover responsável"
-                        >
-                          [ REMOVER ]
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  <LabelManager
-                    labels={labels}
-                    onRemove={(id) => setLabels(labels.filter((l) => l.id !== id))}
-                    workspaceLabels={workspaceLabels}
-                    onToggleWorkspaceLabel={async (labelId) => {
-                      await fetch("/api/workspace-labels/toggle", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ cardId: task.id, labelId }),
-                      })
-                      const label = workspaceLabels.find(l => l.id === labelId)
-                      if (!label) return
-                      const exists = labels.some(l => l.id === labelId)
-                      if (exists) {
-                        setLabels(labels.filter(l => l.id !== labelId))
-                      } else {
-                        setLabels([...labels, label])
-                      }
-                    }}
-                  />
-
-                  <div className="border-t border-[var(--br-border)] pt-3 space-y-3">
-                    <div className="text-[var(--br-accent)]/50 text-xs break-words">
-                      {">"} CREATED: {new Date(task.createdAt).toLocaleString("pt-BR")} | ID: {task.id.slice(0, 8)}...
-                    </div>
-                    {!confirmArchive ? (
-                      <button
-                        onClick={() => setConfirmArchive(true)}
-                        className="flex items-center gap-1 px-2 py-1 text-[10px] border border-[var(--br-border)] rounded text-[var(--br-text-secondary)] hover:border-[#ffcc00] hover:text-[#ffcc00] transition-all"
-                      >
-                        🗄 arquivar
-                      </button>
-                    ) : (
-                      <div className="flex items-center gap-1">
-                        <span className="text-[10px] text-[#ffcc00]">Confirmar?</span>
-                        <button
-                          onClick={async () => {
-                            setArchiving(true)
-                            await fetch(`/api/cards/${task.id}/archive`, { method: "POST" })
-                            onClose()
-                          }}
-                          disabled={archiving}
-                          className="px-2 py-1 bg-[#ffcc00] text-[#0a0a0a] text-[10px] rounded font-bold hover:bg-[#e6b800] transition-colors"
-                        >
-                          sim
-                        </button>
-                        <button
-                          onClick={() => setConfirmArchive(false)}
-                          className="px-2 py-1 border border-[var(--br-border)] text-[var(--br-text-secondary)] text-[10px] rounded hover:border-[var(--br-accent)] transition-colors"
-                        >
-                          não
-                        </button>
-                      </div>
-                    )}
-                  </div>
                 </div>
               )}
             </div>
           </div>
+
+            <div className="flex items-center justify-between">
+              <div className="text-[var(--br-accent)]/50 text-xs">
+                {">"} CREATED: {new Date(task.createdAt).toLocaleString("pt-BR")} | ID: {task.id.slice(0, 8)}...
+              </div>
+              {!confirmArchive ? (
+                <button
+                  onClick={() => setConfirmArchive(true)}
+                  className="flex items-center gap-1 px-2 py-1 text-[10px] border border-[var(--br-border)] rounded text-[var(--br-text-secondary)] hover:border-[#ffcc00] hover:text-[#ffcc00] transition-all"
+                >
+                  🗄 arquivar
+                </button>
+              ) : (
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-[#ffcc00]">Confirmar?</span>
+                  <button
+                    onClick={async () => {
+                      setArchiving(true)
+                      await fetch(`/api/cards/${task.id}/archive`, { method: "POST" })
+                      onClose()
+                    }}
+                    disabled={archiving}
+                    className="px-2 py-1 bg-[#ffcc00] text-[#0a0a0a] text-[10px] rounded font-bold hover:bg-[#e6b800] transition-colors"
+                  >
+                    sim
+                  </button>
+                  <button
+                    onClick={() => setConfirmArchive(false)}
+                    className="px-2 py-1 border border-[var(--br-border)] text-[var(--br-text-secondary)] text-[10px] rounded hover:border-[var(--br-accent)] transition-colors"
+                  >
+                    não
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+          )}
         </div>
       </div>
     </div>
   )
 }
+
 
 // ==================== TASK CARD ====================
 function SortableTaskCard({
@@ -2884,7 +2884,7 @@ function SortableTaskCard({
       style={cover
         ? { ...style, backgroundImage: `url("${task.coverImageUrl}")`, backgroundSize: "cover", backgroundPosition: "center" }
         : style}
-      className={`border p-3 cursor-pointer transition-colors relative overflow-hidden ${
+      className={`border p-3 rounded-md shadow-sm cursor-pointer transition-all hover:shadow-md relative overflow-hidden ${
         task.isComplete
           ? "bg-[var(--br-accent-strong)] border-[var(--br-accent-strong)]"
           : "border-[var(--br-border)] bg-[var(--br-bg-secondary)] hover:border-[var(--br-accent)]/50"
@@ -3135,7 +3135,7 @@ function NewTaskModal({
   return (
     <div className="fixed inset-0 bg-[var(--br-overlay)] z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div
-        className="border-2 border-[var(--br-accent)] bg-[var(--br-bg)] max-w-md w-full p-5 h-full sm:h-auto max-h-full sm:max-h-[92vh] overflow-y-auto"
+        className="border-2 border-[var(--br-accent)] bg-[var(--br-bg)] max-w-md w-full p-5"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
@@ -3287,7 +3287,7 @@ function KanbanColumn({
   }
 
   return (
-    <div className="flex-shrink-0 snap-start md:snap-align-none w-[280px] xl:w-[320px] border border-[var(--br-border)] bg-[var(--br-bg)] flex flex-col min-h-0">
+    <div className="flex-shrink-0 w-72 md:w-80 border border-[var(--br-border)] bg-[var(--br-bg)] flex flex-col max-h-full">
       <div className="border-b border-[var(--br-border)] p-3 flex items-center justify-between bg-[var(--br-bg-secondary)]">
         <div className="flex items-center gap-2 min-w-0 flex-1">
           {editingName ? (
@@ -3382,7 +3382,7 @@ function NewColumnForm({
   const [title, setTitle] = useState("")
 
   return (
-    <div className="flex-shrink-0 snap-start md:snap-align-none w-[280px] xl:w-[320px] border border-[var(--br-accent)] p-4 bg-[var(--br-bg)]">
+    <div className="flex-shrink-0 w-72 md:w-80 border border-[var(--br-accent)] p-4 bg-[var(--br-bg)]">
       <div className="text-[var(--br-accent)] text-xs mb-3">{">"} NEW_COLUMN</div>
       <input
         type="text"
@@ -4394,7 +4394,7 @@ function KanbanBoard({
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
           >
-            <div className="flex-1 min-h-0 flex items-stretch gap-4 overflow-x-auto overflow-y-hidden pb-3 scroll-smooth overscroll-x-contain snap-x snap-mandatory md:snap-none">
+            <div className="flex gap-4 overflow-x-auto pb-4 h-[calc(100vh-200px)] md:h-[calc(100vh-180px)]">
               {filteredColumns.map((column, index) => (
                 <KanbanColumn
                   key={column.id}
@@ -4431,7 +4431,7 @@ function KanbanBoard({
             ) : (
               <button
                 onClick={() => setShowNewColumnForm(true)}
-                className="flex-shrink-0 snap-start md:snap-align-none w-[280px] xl:w-[320px] h-16 border border-dashed border-[var(--br-border)] text-[var(--br-accent)]/50 text-xs hover:border-[var(--br-accent)] hover:text-[var(--br-accent)] transition-colors flex items-center justify-center"
+                className="flex-shrink-0 w-72 md:w-80 h-16 border border-dashed border-[var(--br-border)] text-[var(--br-accent)]/50 text-xs hover:border-[var(--br-accent)] hover:text-[var(--br-accent)] transition-colors flex items-center justify-center"
               >
                 [ + NEW COLUMN ]
               </button>
