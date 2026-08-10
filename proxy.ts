@@ -2,7 +2,9 @@ import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { verifyAccessToken } from "@/lib/auth/jwt"
 
-const PUBLIC_ROUTES = ["/api/auth/login", "/api/auth/refresh", "/api/auth/me", "/api/auth/logout"]
+// /api/auth/me exige sessão: o proxy valida o access_token (cookie/header) e
+// injeta x-user-id — sem isso a sessão nunca seria restaurada ao recarregar.
+const PUBLIC_ROUTES = ["/api/auth/login", "/api/auth/refresh", "/api/auth/logout"]
 const MUTATION_METHODS = ["POST", "PATCH", "PUT", "DELETE"]
 
 export function proxy(request: NextRequest) {
