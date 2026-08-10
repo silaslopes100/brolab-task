@@ -15,6 +15,7 @@ import {
   SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable,
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
+import PushToggle from "@/components/push-toggle"
 
 // ==================== TYPES ====================
 interface Label {
@@ -3465,6 +3466,8 @@ function Header({
               onOpen={onToggleNotifications}
             />
 
+            <PushToggle />
+
             <button
               onClick={onEditProfile}
               className="h-10 px-3 border border-[var(--br-border)] text-[var(--br-accent)] text-xs hover:border-[var(--br-accent)] transition-colors"
@@ -3553,6 +3556,9 @@ function Header({
                   ? "border-[var(--br-accent)] bg-[var(--br-accent)] text-black"
                   : "border-[var(--br-accent)] bg-[var(--br-bg)] text-[var(--br-accent)] hover:bg-[var(--br-border)]"
               }`}>[ VIEW_TEAM ]</button>
+            <div className="w-full">
+              <PushToggle />
+            </div>
             <button onClick={onLogout}
               className="w-full h-10 border border-[var(--br-danger)] text-[var(--br-danger)] text-xs hover:bg-[var(--br-danger)] hover:text-black transition-colors">[ EXIT_SESSION ]</button>
           </div>

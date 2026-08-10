@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { CreateCommentSchema, validate } from "@/lib/validation"
 import { DEFAULT_WORKSPACE_ID } from "@/lib/labels"
 import { logActivity, resolveUserIdByUsername } from "@/lib/activities"
-import { dispatchNotification } from "@/lib/notifications"
+import { dispatchNotification } from "@/lib/delivery"
 
 export async function POST(request: NextRequest) {
   try {

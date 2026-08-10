@@ -5,7 +5,7 @@ import { CreateTaskSchema, UpdateTaskSchema, validate } from "@/lib/validation"
 import { DEFAULT_WORKSPACE_ID } from "@/lib/labels"
 import { createTodoistTask, mapTodoistPriority } from "@/lib/todoist"
 import { getRequestUserId, logActivity } from "@/lib/activities"
-import { dispatchNotification } from "@/lib/notifications"
+import { dispatchNotification } from "@/lib/delivery"
 
 const BUCKET_NAME = "task-files"
 

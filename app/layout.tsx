@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { JetBrains_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
+import PwaSetup from '@/components/pwa-setup'
 import './globals.css'
 
 const jetbrainsMono = JetBrains_Mono({ 
@@ -55,6 +56,7 @@ export default function RootLayout({
       <body className={`${jetbrainsMono.variable} font-mono antialiased`}>
         <ThemeProvider>
           {children}
+          <PwaSetup />
           {process.env.NODE_ENV === 'production' && <Analytics />}
         </ThemeProvider>
       </body>
