@@ -2823,12 +2823,12 @@ function TaskEditModal({
               )}
             </div>
           </div>
-          )}
         </div>
       </div>
     </div>
   )
 }
+
 
 
 // ==================== TASK CARD ====================
